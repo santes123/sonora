@@ -63,4 +63,38 @@ class ArtistTest extends TestCase
             ->assertJsonPath('data.0.id', $artist->id)
             ->assertJsonPath('data.0.songs_count', 4);
     }
+
+    public function test_user_can_view_artist_detail_with_albums_and_songs(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $artist = Artist::factory()->create(['name' => 'Queen', 'bio' => 'Banda de rock británica.']);
+        $album = \App\Models\Album::factory()->for($artist)->create(['title' => 'A Night at the Opera', 'year' => 1975]);
+        $song = Song::factory()->create([
+            'artist_id' => $artist->id,
+            'album_id' => $album->id,
+            'uploader_id' => $user->id,
+            'title' => 'Bohemian Rhapsody',
+        ]);
+
+        $this->getJson("/api/v1/artists/{$artist->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $artist->id)
+            ->assertJsonPath('data.name', 'Queen')
+            ->assertJsonPath('data.bio', 'Banda de rock británica.')
+            ->assertJsonPath('data.songs_count', 1)
+            ->assertJsonPath('data.albums_count', 1)
+            ->assertJsonPath('data.albums.0.id', $album->id)
+            ->assertJsonPath('data.songs.0.id', $song->id);
+    }
+
+    public function test_returns_404_for_nonexistent_artist(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/v1/artists/99999')
+            ->assertNotFound();
+    }
 }

@@ -29,4 +29,17 @@ class ArtistController extends Controller
 
         return ArtistResource::collection($artists);
     }
+
+    public function show(Artist $artist): ArtistResource
+    {
+        $artist->load([
+            'albums' => fn ($query) => $query->withCount('songs')->orderByDesc('year')->orderBy('title_normalized'),
+            'songs' => fn ($query) => $query
+                ->with(['artist', 'album', 'mediaAsset:id,path'])
+                ->orderBy('title_normalized')
+                ->limit(50),
+        ])->loadCount(['songs', 'albums']);
+
+        return new ArtistResource($artist);
+    }
 }

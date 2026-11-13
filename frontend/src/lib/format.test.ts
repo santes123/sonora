@@ -42,6 +42,13 @@ describe('formatTotalDuration', () => {
   })
 })
 
+describe('formatDate', () => {
+  it('formats ISO dates or returns empty string for null', () => {
+    expect(formatDate(null)).toBe('')
+    expect(formatDate('2026-11-13T10:00:00Z')).toContain('2026')
+  })
+})
+
 describe('pluralize', () => {
   it('handles singular and plural counts', () => {
     expect(pluralize(1, 'canción', 'canciones')).toBe('1 canción')

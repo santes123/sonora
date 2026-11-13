@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { AudioLines, Pause, Play } from 'lucide-react'
 import { AddToPlaylistMenu } from './AddToPlaylistMenu'
 import { Cover } from './Cover'
@@ -103,14 +104,34 @@ export function SongRow({
           {song.title}
         </p>
         <p className="text-ink-300 truncate text-sm">
-          {song.artist_name ?? 'Artista desconocido'}
+          {song.artist?.id ? (
+            <Link
+              to={`/artists/${song.artist.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="hover:text-accent-soft hover:underline"
+            >
+              {song.artist_name ?? 'Artista desconocido'}
+            </Link>
+          ) : (
+            <span>{song.artist_name ?? 'Artista desconocido'}</span>
+          )}
           <span className="text-ink-400 md:hidden"> · {formatDuration(song.duration_ms)}</span>
         </p>
       </div>
 
       {showAlbum ? (
         <p className="text-ink-300 hidden truncate text-sm md:block">
-          {song.album_title ?? '—'}
+          {song.album?.id ? (
+            <Link
+              to={`/albums/${song.album.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="hover:text-accent-soft hover:underline"
+            >
+              {song.album_title ?? '—'}
+            </Link>
+          ) : (
+            <span>{song.album_title ?? '—'}</span>
+          )}
         </p>
       ) : (
         <span className="hidden md:block" aria-hidden="true" />

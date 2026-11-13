@@ -41,6 +41,7 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/songs/{song}', [SongController::class, 'destroy'])->name('songs.destroy');
 
         Route::get('/artists', [ArtistController::class, 'index'])->name('artists.index');
+        Route::get('/artists/{artist}', [ArtistController::class, 'show'])->name('artists.show');
         Route::get('/albums', [AlbumController::class, 'index'])->name('albums.index');
         Route::get('/albums/{album}', [AlbumController::class, 'show'])->name('albums.show');
 

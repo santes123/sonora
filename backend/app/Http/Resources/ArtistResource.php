@@ -20,9 +20,12 @@ class ArtistResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'bio' => $this->bio,
             'image_url' => $this->mediaUrl($this->image_path),
             'songs_count' => $this->whenCounted('songs'),
             'albums_count' => $this->whenCounted('albums'),
+            'albums' => AlbumResource::collection($this->whenLoaded('albums')),
+            'songs' => SongResource::collection($this->whenLoaded('songs')),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

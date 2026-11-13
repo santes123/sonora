@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   ListMusic,
   Pause,
@@ -102,9 +103,20 @@ export function PlayerBar() {
               {current ? current.title : 'Nada en reproducción'}
             </p>
             <p className="text-ink-300 truncate text-xs">
-              {current
-                ? (current.artist_name ?? 'Artista desconocido')
-                : 'Elige una canción para empezar'}
+              {current ? (
+                current.artist?.id ? (
+                  <Link
+                    to={`/artists/${current.artist.id}`}
+                    className="hover:text-accent-soft hover:underline"
+                  >
+                    {current.artist_name ?? 'Artista desconocido'}
+                  </Link>
+                ) : (
+                  <span>{current.artist_name ?? 'Artista desconocido'}</span>
+                )
+              ) : (
+                'Elige una canción para empezar'
+              )}
             </p>
           </div>
         </div>

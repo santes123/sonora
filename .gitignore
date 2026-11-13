@@ -19,6 +19,7 @@
 
 # Temporales de pruebas locales
 /.tmp/
+/.backups/
 
 # Builds
 /frontend/dist/

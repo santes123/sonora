@@ -12,9 +12,12 @@ export interface User {
 export interface Artist {
   id: number
   name: string
+  bio?: string | null
   image_url: string | null
   songs_count?: number
   albums_count?: number
+  albums?: Album[]
+  songs?: Song[]
   created_at: string | null
 }
 

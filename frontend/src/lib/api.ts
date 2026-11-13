@@ -179,6 +179,7 @@ export const api = {
   deleteSong: (id: number) => request<void>(`/songs/${id}`, { method: 'DELETE' }),
 
   artists: (perPage = 24) => request<Paginated<Artist>>(`/artists${toQueryString({ per_page: perPage })}`),
+  artist: (id: number) => resource<Artist>(`/artists/${id}`),
   albums: (perPage = 24) => request<Paginated<Album>>(`/albums${toQueryString({ per_page: perPage })}`),
   album: (id: number) => resource<Album>(`/albums/${id}`),
 
