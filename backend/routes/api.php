@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\FavoritesController;
 use App\Http\Controllers\Api\V1\GoogleAuthController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\HistoryController;
+use App\Http\Controllers\Api\V1\OfflineController;
 use App\Http\Controllers\Api\V1\PlaylistController;
 use App\Http\Controllers\Api\V1\SongController;
 use App\Http\Controllers\Api\V1\SongLikeController;
@@ -66,5 +67,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
         Route::post('/history', [HistoryController::class, 'store'])->name('history.store');
         Route::delete('/history', [HistoryController::class, 'destroy'])->name('history.destroy');
+
+        // Descarga offline: URLs firmadas en lote para guardar el audio en el
+        // dispositivo. La capacidad es la propia URL firmada.
+        Route::post('/offline/urls', [OfflineController::class, 'urls'])->name('offline.urls');
     });
 });
