@@ -249,9 +249,11 @@ users ──< playlists ──< playlist_items >── songs
 - [ ] Diseño visual definitivo y accesibilidad AA — iteración.
 
 ### Fase 4 — Social y detalle
-- [ ] Perfiles, playlists públicas, likes, historial, álbum/artista enriquecidos.
+- [x] Vistas enriquecidas de Álbum y Artista con discografía, metadatos y reproducción dedicada.
 - [x] Reordenación de playlist con drag & drop y flechas.
-- [ ] Portadas de playlist.
+- [ ] Favoritos / likes ("Tus me gusta").
+- [ ] Historial de reproducción.
+- [ ] Perfiles y portadas personalizadas de playlist.
 
 ### Fase 5 — Offline
 - [ ] Descarga de playlists a Cache Storage + IndexedDB (Dexie).
