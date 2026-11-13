@@ -14,6 +14,7 @@ import {
   VolumeX,
 } from 'lucide-react'
 import { Cover } from './Cover'
+import { LikeButton } from './LikeButton'
 import { usePlayer } from '../context/PlayerContext'
 import { cn, formatDuration } from '../lib/format'
 
@@ -119,6 +120,8 @@ export function PlayerBar() {
               )}
             </p>
           </div>
+
+          {current ? <LikeButton song={current} className="shrink-0" /> : null}
         </div>
 
         <div className="flex flex-none flex-col items-center gap-1 lg:flex-1">

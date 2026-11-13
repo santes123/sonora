@@ -36,6 +36,7 @@ class ArtistController extends Controller
             'albums' => fn ($query) => $query->withCount('songs')->orderByDesc('year')->orderBy('title_normalized'),
             'songs' => fn ($query) => $query
                 ->with(['artist', 'album', 'mediaAsset:id,path'])
+                ->withIsLiked(request()->user()?->id)
                 ->orderBy('title_normalized')
                 ->limit(50),
         ])->loadCount(['songs', 'albums']);

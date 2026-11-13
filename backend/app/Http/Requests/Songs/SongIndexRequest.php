@@ -21,6 +21,8 @@ class SongIndexRequest extends FormRequest
             'q' => ['nullable', 'string', 'max:120'],
             'artist_id' => ['nullable', 'integer', 'exists:artists,id'],
             'album_id' => ['nullable', 'integer', 'exists:albums,id'],
+            'liked' => ['nullable', 'boolean'],
+            'favorites' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
             'sort' => ['nullable', Rule::in(['newest', 'title', 'artist', 'duration'])],

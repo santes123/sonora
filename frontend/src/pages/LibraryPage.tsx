@@ -1,18 +1,20 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ListMusic, Loader2, Plus } from 'lucide-react'
+import { Heart, ListMusic, Loader2, Play, Plus } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { PlaylistCard } from '../components/PlaylistCard'
+import { SongList } from '../components/SongList'
 import { PageLoader } from '../components/Spinner'
+import { usePlayer } from '../context/PlayerContext'
 import { useToast } from '../context/ToastContext'
 import { api, firstError } from '../lib/api'
 import { cn, pluralize } from '../lib/format'
 
-type Tab = 'mine' | 'all'
+type Tab = 'favorites' | 'mine' | 'all'
 
 export function LibraryPage() {
-  const [tab, setTab] = useState<Tab>('mine')
+  const [tab, setTab] = useState<Tab>('favorites')
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -20,6 +22,13 @@ export function LibraryPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const { playQueue } = usePlayer()
+
+  const favorites = useQuery({
+    queryKey: ['me', 'favorites'],
+    queryFn: () => api.favorites(100),
+    enabled: tab === 'favorites',
+  })
 
   const mine = useQuery({
     queryKey: ['playlists', 'mine'],
@@ -64,6 +73,7 @@ export function LibraryPage() {
 
   const active = tab === 'mine' ? mine : all
   const playlists = active.data?.data ?? []
+  const favoriteSongs = favorites.data?.data ?? []
 
   return (
     <div className="space-y-6">
@@ -71,16 +81,31 @@ export function LibraryPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Biblioteca</h1>
           <p className="text-ink-300 mt-1 text-sm">
-            {tab === 'mine'
-              ? `${pluralize(mine.data?.meta.total ?? 0, 'playlist propia', 'playlists propias')}.`
-              : `${pluralize(all.data?.meta.total ?? 0, 'playlist pública', 'playlists públicas')}.`}
+            {tab === 'favorites'
+              ? `${pluralize(favorites.data?.meta.total ?? 0, 'canción que te gusta', 'canciones que te gustan')}.`
+              : tab === 'mine'
+                ? `${pluralize(mine.data?.meta.total ?? 0, 'playlist propia', 'playlists propias')}.`
+                : `${pluralize(all.data?.meta.total ?? 0, 'playlist pública', 'playlists públicas')}.`}
           </p>
         </div>
 
-        <button type="button" onClick={() => setCreating((value) => !value)} className="btn-primary">
-          <Plus className="size-4" aria-hidden="true" />
-          Nueva playlist
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {tab === 'favorites' && favoriteSongs.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => playQueue(favoriteSongs, 0)}
+              className="btn-outline"
+            >
+              <Play className="size-4 fill-current" aria-hidden="true" />
+              Reproducir
+            </button>
+          ) : null}
+
+          <button type="button" onClick={() => setCreating((value) => !value)} className="btn-primary">
+            <Plus className="size-4" aria-hidden="true" />
+            Nueva playlist
+          </button>
+        </div>
       </div>
 
       {creating ? (
@@ -142,11 +167,12 @@ export function LibraryPage() {
 
       <div
         role="tablist"
-        aria-label="Filtrar playlists"
+        aria-label="Filtrar la biblioteca"
         className="bg-ink-850 border-ink-700 inline-flex rounded-full border p-1"
       >
         {(
           [
+            { id: 'favorites', label: 'Canciones que te gustan' },
             { id: 'mine', label: 'Mis playlists' },
             { id: 'all', label: 'Comunidad' },
           ] as { id: Tab; label: string }[]
@@ -159,9 +185,7 @@ export function LibraryPage() {
             onClick={() => setTab(option.id)}
             className={cn(
               'rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
-              tab === option.id
-                ? 'bg-accent text-white'
-                : 'text-ink-300 hover:text-white',
+              tab === option.id ? 'bg-accent text-white' : 'text-ink-300 hover:text-white',
             )}
           >
             {option.label}
@@ -169,7 +193,19 @@ export function LibraryPage() {
         ))}
       </div>
 
-      {active.isLoading ? (
+      {tab === 'favorites' ? (
+        favorites.isLoading ? (
+          <PageLoader label="Cargando tus favoritas" />
+        ) : favoriteSongs.length > 0 ? (
+          <SongList songs={favoriteSongs} label="Canciones que te gustan" />
+        ) : (
+          <EmptyState
+            icon={Heart}
+            title="Todavía no te gusta ninguna canción"
+            description="Pulsa el corazón en cualquier canción del catálogo y aparecerá aquí."
+          />
+        )
+      ) : active.isLoading ? (
         <PageLoader label="Cargando playlists" />
       ) : playlists.length > 0 ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">

@@ -251,7 +251,11 @@ users ──< playlists ──< playlist_items >── songs
 ### Fase 4 — Social y detalle
 - [x] Vistas enriquecidas de Álbum y Artista con discografía, metadatos y reproducción dedicada.
 - [x] Reordenación de playlist con drag & drop y flechas.
-- [ ] Favoritos / likes ("Tus me gusta").
+- [x] Favoritos / likes ("Tus me gusta").
+  - Tabla `song_likes` con restricción única `(user_id, song_id)` e índice `(user_id, created_at)`.
+  - `POST|DELETE /api/v1/songs/{song}/like` idempotentes y `GET /api/v1/me/favorites` paginado.
+  - `is_liked` en `SongResource`; filtro `liked=1` / `favorites=1` en `GET /api/v1/songs`.
+  - Corazón interactivo en filas y reproductor; pestaña "Canciones que te gustan" en la Biblioteca.
 - [ ] Historial de reproducción.
 - [ ] Perfiles y portadas personalizadas de playlist.
 

@@ -20,14 +20,27 @@ class SongController extends Controller
     {
         $term = $request->string('q')->toString();
         $sort = $request->string('sort', 'newest')->toString();
+        $userId = $request->user()?->id;
+        $onlyLiked = $request->boolean('liked') || $request->boolean('favorites');
 
-        $query = Song::query()
-            ->with([
-                'artist',
-                'album',
-                'mediaAsset:id,path',
-                'uploader:id,name',
-            ])
+        $query = Song::query()->with([
+            'artist',
+            'album',
+            'mediaAsset:id,path',
+            'uploader:id,name',
+        ]);
+
+        if ($onlyLiked) {
+            // JOIN por la pivote en lugar de un EXISTS: el índice
+            // (user_id, created_at) resuelve el filtro *y* el orden en un
+            // solo recorrido. Con `whereHas` el plan obligaba a un filesort
+            // sobre el total de "me gusta" del usuario.
+            $query->join('song_likes', 'song_likes.song_id', '=', 'songs.id')
+                ->where('song_likes.user_id', $userId)
+                ->select('songs.*');
+        }
+
+        $query->withIsLiked($userId)
             ->search($term)
             ->byArtist($request->integer('artist_id') ?: null)
             ->byAlbum($request->integer('album_id') ?: null);
@@ -37,7 +50,14 @@ class SongController extends Controller
                 $query->orderByRelevance($term);
             }
 
-            $query->orderByDesc('created_at')->orderByDesc('id');
+            // Con el filtro de favoritas, "más reciente" es la fecha del "me
+            // gusta": coincide con el orden de `GET /api/v1/me/favorites` y
+            // mantiene la consulta sobre el índice de la pivote.
+            if ($onlyLiked) {
+                $query->orderByDesc('song_likes.created_at');
+            } else {
+                $query->orderByDesc('created_at')->orderByDesc('id');
+            }
         } elseif ($sort === 'title') {
             $query->orderBy('title_normalized');
         } elseif ($sort === 'artist') {
@@ -58,6 +78,7 @@ class SongController extends Controller
         $this->authorize('view', $song);
 
         $song->load(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name']);
+        $song->loadIsLiked(request()->user()?->id);
 
         return new SongResource($song);
     }

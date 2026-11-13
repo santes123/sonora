@@ -3,10 +3,12 @@
 use App\Http\Controllers\Api\V1\AlbumController;
 use App\Http\Controllers\Api\V1\ArtistController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\FavoritesController;
 use App\Http\Controllers\Api\V1\GoogleAuthController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\PlaylistController;
 use App\Http\Controllers\Api\V1\SongController;
+use App\Http\Controllers\Api\V1\SongLikeController;
 use App\Http\Controllers\Api\V1\StreamMediaController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +41,9 @@ Route::prefix('v1')->group(function (): void {
             ->middleware('throttle:uploads')
             ->name('songs.store');
         Route::delete('/songs/{song}', [SongController::class, 'destroy'])->name('songs.destroy');
+        Route::post('/songs/{song}/like', [SongLikeController::class, 'store'])->name('songs.like');
+        Route::delete('/songs/{song}/like', [SongLikeController::class, 'destroy'])->name('songs.unlike');
+        Route::get('/me/favorites', [FavoritesController::class, 'index'])->name('me.favorites');
 
         Route::get('/artists', [ArtistController::class, 'index'])->name('artists.index');
         Route::get('/artists/{artist}', [ArtistController::class, 'show'])->name('artists.show');

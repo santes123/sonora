@@ -178,6 +178,11 @@ export const api = {
   song: (id: number) => resource<Song>(`/songs/${id}`),
   deleteSong: (id: number) => request<void>(`/songs/${id}`, { method: 'DELETE' }),
 
+  likeSong: (id: number) => resource<Song>(`/songs/${id}/like`, { method: 'POST' }),
+  unlikeSong: (id: number) => resource<Song>(`/songs/${id}/like`, { method: 'DELETE' }),
+  favorites: (perPage = 50) =>
+    request<Paginated<Song>>(`/me/favorites${toQueryString({ per_page: perPage })}`),
+
   artists: (perPage = 24) => request<Paginated<Artist>>(`/artists${toQueryString({ per_page: perPage })}`),
   artist: (id: number) => resource<Artist>(`/artists/${id}`),
   albums: (perPage = 24) => request<Paginated<Album>>(`/albums${toQueryString({ per_page: perPage })}`),

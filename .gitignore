@@ -9,6 +9,7 @@
 /backend/.env.production
 /frontend/.env.local
 /frontend/.env.*.local
+/login.txt
 
 # Medios y artefactos
 /backend/storage/app/private/media/*

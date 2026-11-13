@@ -34,6 +34,7 @@ class SongResource extends JsonResource
             'year' => $this->year,
             'genre' => $this->genre,
             'duration_ms' => $this->duration_ms,
+            'is_liked' => (bool) ($this->is_liked ?? false),
             'cover_url' => $this->mediaUrl($coverPath),
             'stream_url' => $streamUrl,
             'artist' => $this->whenLoaded('artist', fn () => new ArtistResource($this->artist)),

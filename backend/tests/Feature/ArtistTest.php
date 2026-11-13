@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Album;
 use App\Models\Artist;
 use App\Models\Song;
 use App\Models\User;
@@ -70,7 +71,7 @@ class ArtistTest extends TestCase
         Sanctum::actingAs($user);
 
         $artist = Artist::factory()->create(['name' => 'Queen', 'bio' => 'Banda de rock británica.']);
-        $album = \App\Models\Album::factory()->for($artist)->create(['title' => 'A Night at the Opera', 'year' => 1975]);
+        $album = Album::factory()->for($artist)->create(['title' => 'A Night at the Opera', 'year' => 1975]);
         $song = Song::factory()->create([
             'artist_id' => $artist->id,
             'album_id' => $album->id,

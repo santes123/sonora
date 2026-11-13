@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Song extends Model
@@ -72,6 +73,46 @@ class Song extends Model
     public function playlistItems(): HasMany
     {
         return $this->hasMany(PlaylistItem::class);
+    }
+
+    /** @return BelongsToMany<User, $this> */
+    public function likedByUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'song_likes')
+            ->withPivot('created_at');
+    }
+
+    /** @param Builder<Song> $query */
+    public function scopeWithIsLiked(Builder $query, ?int $userId): Builder
+    {
+        if (! $userId) {
+            return $query;
+        }
+
+        return $query->withExists([
+            'likedByUsers as is_liked' => fn ($sub) => $sub->where('user_id', $userId),
+        ]);
+    }
+
+    /**
+     * Resuelve el estado "me gusta" sobre un modelo ya cargado en memoria.
+     *
+     * Es el equivalente en un solo objeto del scope `withIsLiked`, que solo
+     * puede aplicarse a consultas. Una única consulta extra, no una por canción.
+     */
+    public function loadIsLiked(?int $userId): self
+    {
+        if (! $userId) {
+            $this->setAttribute('is_liked', false);
+
+            return $this;
+        }
+
+        $this->loadExists([
+            'likedByUsers as is_liked' => fn ($sub) => $sub->where('user_id', $userId),
+        ]);
+
+        return $this;
     }
 
     /** @param Builder<Song> $query */

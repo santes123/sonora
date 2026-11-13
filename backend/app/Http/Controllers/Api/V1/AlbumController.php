@@ -35,6 +35,7 @@ class AlbumController extends Controller
             'artist',
             'songs' => fn ($query) => $query
                 ->with(['artist', 'album', 'mediaAsset:id,path'])
+                ->withIsLiked(request()->user()?->id)
                 ->orderBy('disc_number')
                 ->orderBy('track_number')
                 ->orderBy('title_normalized'),

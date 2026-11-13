@@ -1,11 +1,11 @@
 import { useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Loader2, SearchX } from 'lucide-react'
+import { Heart, Loader2, SearchX } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { SongList } from '../components/SongList'
 import { PageLoader } from '../components/Spinner'
 import { api, firstError } from '../lib/api'
-import { pluralize } from '../lib/format'
+import { cn, pluralize } from '../lib/format'
 import type { SongQuery } from '../types'
 
 type Sort = NonNullable<SongQuery['sort']>
@@ -24,11 +24,18 @@ export function SearchPage() {
   const sort: Sort = sortOptions.some((option) => option.value === sortParam)
     ? (sortParam as Sort)
     : 'newest'
+  const onlyLiked = params.get('liked') === '1'
 
   const query = useInfiniteQuery({
-    queryKey: ['songs', 'search', term, sort],
+    queryKey: ['songs', 'search', term, sort, onlyLiked],
     queryFn: ({ pageParam }) =>
-      api.songs({ q: term, sort, page: pageParam, per_page: 30 }),
+      api.songs({
+        q: term,
+        sort,
+        liked: onlyLiked ? 1 : undefined,
+        page: pageParam,
+        per_page: 30,
+      }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.meta.current_page < lastPage.meta.last_page
@@ -46,6 +53,18 @@ export function SearchPage() {
     setParams(next, { replace: true })
   }
 
+  const toggleOnlyLiked = () => {
+    const next = new URLSearchParams(params)
+
+    if (onlyLiked) {
+      next.delete('liked')
+    } else {
+      next.set('liked', '1')
+    }
+
+    setParams(next, { replace: true })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -59,7 +78,20 @@ export function SearchPage() {
         </div>
 
         {term ? (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleOnlyLiked}
+              aria-pressed={onlyLiked}
+              className={cn(
+                'btn-outline',
+                onlyLiked && 'border-accent text-accent-soft bg-accent/10',
+              )}
+            >
+              <Heart className={cn('size-4', onlyLiked && 'fill-current')} aria-hidden="true" />
+              Solo mis favoritas
+            </button>
+
             <label htmlFor="sort" className="text-ink-300 text-sm">
               Ordenar por
             </label>
@@ -102,11 +134,18 @@ export function SearchPage() {
         <EmptyState
           icon={SearchX}
           title="Sin resultados"
-          description={`No encontramos nada para “${term}”. Prueba con otro título, artista o álbum.`}
+          description={
+            onlyLiked
+              ? `No tienes favoritas que coincidan con “${term}”.`
+              : `No encontramos nada para “${term}”. Prueba con otro título, artista o álbum.`
+          }
         />
       ) : (
         <>
-          <SongList songs={songs} label={`Resultados para ${term}`} />
+          <SongList
+            songs={songs}
+            label={onlyLiked ? `Tus favoritas para ${term}` : `Resultados para ${term}`}
+          />
 
           {query.hasNextPage ? (
             <div className="flex justify-center pt-2">

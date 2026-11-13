@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -61,6 +62,14 @@ class User extends Authenticatable
     public function uploadedSongs(): HasMany
     {
         return $this->hasMany(Song::class, 'uploader_id');
+    }
+
+    /** @return BelongsToMany<Song, $this> */
+    public function likedSongs(): BelongsToMany
+    {
+        return $this->belongsToMany(Song::class, 'song_likes')
+            ->withPivot('created_at')
+            ->orderByPivot('created_at', 'desc');
     }
 
     public function isAdmin(): bool

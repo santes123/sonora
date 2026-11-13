@@ -44,6 +44,7 @@ export interface Song {
   duration_ms: number
   cover_url: string | null
   stream_url: string | null
+  is_liked: boolean
   artist?: Artist
   album?: Album
   uploader?: User
@@ -88,6 +89,7 @@ export interface SongQuery {
   q?: string
   artist_id?: number
   album_id?: number
+  liked?: 1
   sort?: 'newest' | 'title' | 'artist' | 'duration'
   per_page?: number
   page?: number

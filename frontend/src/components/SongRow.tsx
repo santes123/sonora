@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AudioLines, Pause, Play } from 'lucide-react'
 import { AddToPlaylistMenu } from './AddToPlaylistMenu'
 import { Cover } from './Cover'
+import { LikeButton } from './LikeButton'
 import { usePlayer } from '../context/PlayerContext'
 import { cn, formatDuration } from '../lib/format'
 import type { Song } from '../types'
@@ -142,6 +143,7 @@ export function SongRow({
       </p>
 
       <div className="flex items-center gap-0.5">
+        <LikeButton song={song} />
         <AddToPlaylistMenu song={song} />
         {extraActions}
       </div>
