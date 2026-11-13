@@ -1,20 +1,32 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AudioLines, Home, Library, ListMusic, LogOut, Search, Upload } from 'lucide-react'
+import {
+  AudioLines,
+  Download,
+  Home,
+  Library,
+  ListMusic,
+  LogOut,
+  Search,
+  Upload,
+} from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useOffline } from '../context/OfflineContext'
 import { cn } from '../lib/format'
 
 const navigation = [
   { to: '/', label: 'Inicio', icon: Home, end: true },
   { to: '/search', label: 'Buscar', icon: Search, end: false },
   { to: '/library', label: 'Biblioteca', icon: Library, end: false },
+  { to: '/downloads', label: 'Descargas', icon: Download, end: false },
   { to: '/upload', label: 'Subir música', icon: Upload, end: false },
 ]
 
 export function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const { downloads } = useOffline()
 
   const { data: playlists } = useQuery({
     queryKey: ['playlists', 'mine'],
@@ -56,6 +68,11 @@ export function Sidebar() {
           >
             <Icon className="size-5" aria-hidden="true" />
             {label}
+            {to === '/downloads' && downloads.length > 0 ? (
+              <span className="bg-accent/20 text-accent-soft ml-auto rounded-full px-2 py-0.5 text-xs font-semibold">
+                {downloads.length}
+              </span>
+            ) : null}
           </NavLink>
         ))}
       </nav>

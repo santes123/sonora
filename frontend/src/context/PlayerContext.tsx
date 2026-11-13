@@ -11,6 +11,8 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { useOffline } from './OfflineContext'
+import { useToast } from './ToastContext'
 import type { Song } from '../types'
 
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -83,6 +85,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // canción cuando el usuario pausa y reanuda.
   const recordedSongRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
+  const { isOnline, isDownloaded, markAccessed } = useOffline()
+  const toast = useToast()
 
   const current = useMemo<Song | null>(() => {
     const queueIndex = order[cursor]
@@ -358,6 +362,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * canciones que el usuario nunca llegó a escuchar. La llamada es
    * "dispara y olvida": el reproductor no espera a la API y el backend
    * encola la escritura.
+   *
+   * Además marca la canción como usada: alimenta el LRU de las descargas
+   * offline, para que lo que se escucha sea lo último que se expulsa.
    */
   const handlePlaying = useCallback(
     (event: SyntheticEvent<HTMLAudioElement>) => {
@@ -366,6 +373,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!Number.isFinite(songId) || songId <= 0) {
         return
       }
+
+      markAccessed(songId)
 
       // Pausar y reanudar no cuenta como una reproducción nueva.
       if (recordedSongRef.current === songId) {
@@ -389,7 +398,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           recordedSongRef.current = null
         })
     },
-    [queryClient],
+    [queryClient, markAccessed],
   )
 
   const value = useMemo<PlayerContextValue>(
@@ -458,7 +467,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }}
         onEnded={handleEnded}
         onPlaying={handlePlaying}
-        onError={() => setIsPlaying(false)}
+        onError={() => {
+          setIsPlaying(false)
+
+          // Sin conexión solo se puede escuchar lo descargado: avisar evita
+          // que el usuario piense que la canción está rota.
+          if (!isOnline && current && !isDownloaded(current.id)) {
+            toast.info(
+              `«${current.title}» no está disponible sin conexión. Descárgala para poder oírla.`,
+            )
+          }
+        }}
         className="hidden"
       />
     </PlayerContext.Provider>

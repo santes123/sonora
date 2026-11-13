@@ -8,11 +8,24 @@ import { VitePWA } from 'vite-plugin-pwa'
 // de sesión de Sanctum funcionen sin CORS.
 const backend = 'http://localhost:8080'
 
+const proxy = {
+  '/api': { target: backend, changeOrigin: false },
+  '/sanctum': { target: backend, changeOrigin: false },
+  // Regex exacta: un prefijo `/up` capturaría también la ruta `/upload`.
+  '^/up$': { target: backend, changeOrigin: false },
+}
+
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
+      // Service worker propio: la caché de audio necesita control explícito
+      // (qué se descarga, cuánto cabe y cómo se borra), y Workbox en modo
+      // generateSW solo permite reglas por URL.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
@@ -33,34 +46,27 @@ export default defineConfig({
           { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/sanctum\//],
-        runtimeCaching: [
-          {
-            // El audio se sirve por URL firmada con soporte Range: no se cachea.
-            urlPattern: /\/api\/v1\/media\//,
-            handler: 'NetworkOnly',
-          },
-          // Las respuestas de la API no se cachean: pueden contener datos de la
-          // sesión. El offline real se hará con almacenamiento por usuario
-          // (IndexedDB) en la fase 5, no con la caché HTTP de Workbox.
-        ],
       },
-      devOptions: { enabled: false },
+      // En desarrollo el service worker también se activa: sin él no se puede
+      // probar la descarga offline ni el arranque sin red.
+      devOptions: { enabled: true, type: 'module' },
     }),
   ],
   server: {
     host: true,
     port: 5173,
     strictPort: true,
-    proxy: {
-      '/api': { target: backend, changeOrigin: false },
-      '/sanctum': { target: backend, changeOrigin: false },
-      // Regex exacta: un prefijo `/up` capturaría también la ruta `/upload`.
-      '^/up$': { target: backend, changeOrigin: false },
-    },
+    proxy,
+  },
+  preview: {
+    host: true,
+    port: 4173,
+    strictPort: true,
+    // El build de producción se sirve contra el mismo backend para poder
+    // probar el modo offline con el service worker real.
+    proxy,
   },
   build: {
     target: 'es2022',

@@ -104,6 +104,19 @@ export interface SongQuery {
   page?: number
 }
 
+/**
+ * URL firmada de descarga de una canción.
+ *
+ * La capacidad es la propia URL: caduca a las pocas horas, así que solo
+ * sirve para el momento de la descarga. Después el audio vive en la caché
+ * del navegador.
+ */
+export interface DownloadUrl {
+  song_id: number
+  url: string
+  bytes: number
+}
+
 export interface UploadResult {
   song: Song
   deduplicated: boolean

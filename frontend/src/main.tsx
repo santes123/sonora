@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { LikesProvider } from './context/LikesContext'
+import { OfflineProvider } from './context/OfflineContext'
 import { PlayerProvider } from './context/PlayerContext'
 import { ToastProvider } from './context/ToastContext'
 import { ApiError } from './lib/api'
@@ -41,11 +42,13 @@ createRoot(container).render(
       <ToastProvider>
         <AuthProvider>
           <LikesProvider>
-            <PlayerProvider>
-              <BrowserRouter>
-                <App />
-              </BrowserRouter>
-            </PlayerProvider>
+            <OfflineProvider>
+              <PlayerProvider>
+                <BrowserRouter>
+                  <App />
+                </BrowserRouter>
+              </PlayerProvider>
+            </OfflineProvider>
           </LikesProvider>
         </AuthProvider>
       </ToastProvider>

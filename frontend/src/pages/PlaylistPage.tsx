@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  Download,
   ImageUp,
   ListMusic,
   Loader2,
@@ -21,6 +22,7 @@ import { PlaylistCover } from '../components/PlaylistCover'
 import { SongList } from '../components/SongList'
 import { PageLoader } from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
+import { useOffline } from '../context/OfflineContext'
 import { usePlayer } from '../context/PlayerContext'
 import { useToast } from '../context/ToastContext'
 import { api, firstError } from '../lib/api'
@@ -35,6 +37,7 @@ export function PlaylistPage() {
   const toast = useToast()
   const { user } = useAuth()
   const { playQueue } = usePlayer()
+  const { downloadPlaylist, downloading, progress } = useOffline()
 
   const [items, setItems] = useState<PlaylistItem[]>([])
   const [editing, setEditing] = useState(false)
@@ -58,6 +61,17 @@ export function PlaylistPage() {
   }, [playlist])
 
   const isOwner = Boolean(user && playlist && playlist.user?.id === user.id)
+
+  const isDownloadingPlaylist = downloading.length > 0
+
+  const handleDownloadPlaylist = async () => {
+    try {
+      await downloadPlaylist(songs, playlistId)
+      toast.success('Playlist descargada.')
+    } catch (error) {
+      toast.error(firstError(error))
+    }
+  }
 
   const reorder = useMutation({
     mutationFn: (ordered: PlaylistItem[]) =>
@@ -331,6 +345,21 @@ export function PlaylistPage() {
                   <Plus className="size-4" aria-hidden="true" />
                   Añadir canciones
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadPlaylist}
+                  disabled={songs.length === 0 || isDownloadingPlaylist}
+                  className="btn-outline"
+                  title="Descargar esta playlist para usarla sin conexión"
+                >
+                  {isDownloadingPlaylist ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="size-4" aria-hidden="true" />
+                  )}
+                  {isDownloadingPlaylist ? `Descargando ${progress}%` : 'Descargar'}
+                </button>
 
                 {isOwner ? (
                   <>

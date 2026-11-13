@@ -3,6 +3,7 @@ import { AppLayout } from './components/AppLayout'
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute'
 import { AlbumPage } from './pages/AlbumPage'
 import { ArtistPage } from './pages/ArtistPage'
+import { DownloadsPage } from './pages/DownloadsPage'
 import { HomePage } from './pages/HomePage'
 import { LibraryPage } from './pages/LibraryPage'
 import { LoginPage } from './pages/LoginPage'
@@ -25,6 +26,7 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/downloads" element={<DownloadsPage />} />
           <Route path="/playlists/:id" element={<PlaylistPage />} />
           <Route path="/albums/:id" element={<AlbumPage />} />
           <Route path="/artists/:id" element={<ArtistPage />} />

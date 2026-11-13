@@ -1,6 +1,7 @@
 import type {
   Album,
   Artist,
+  DownloadUrl,
   HistoryEntry,
   Paginated,
   Playlist,
@@ -245,6 +246,18 @@ export const api = {
     }),
 
   clearHistory: () => request<void>('/history', { method: 'DELETE' }),
+
+  /**
+   * URLs firmadas para descargar canciones al dispositivo.
+   *
+   * Se piden en lote: descargar una playlist entera son decenas de
+   * canciones y una petición por cada una multiplicaría la latencia.
+   */
+  downloadUrls: (songIds: number[]) =>
+    request<Paginated<DownloadUrl>>('/offline/urls', {
+      method: 'POST',
+      body: { song_ids: songIds },
+    }),
 }
 
 /**

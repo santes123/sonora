@@ -1,7 +1,34 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { AudioLines, Search, Upload } from 'lucide-react'
+import { AudioLines, Search, Upload, WifiOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useOffline } from '../context/OfflineContext'
+
+/**
+ * Aviso de "sin conexión".
+ *
+ * Se muestra siempre que el navegador pierde la red: sin conexión solo se
+ * puede escuchar lo que está descargado, y conviene saberlo antes de
+ * intentarlo.
+ */
+function OfflineIndicator() {
+  const { isOnline } = useOffline()
+  const { offline } = useAuth()
+
+  if (isOnline && !offline) {
+    return null
+  }
+
+  return (
+    <span
+      className="border-amber-500/40 bg-amber-500/10 text-amber-200 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+      role="status"
+    >
+      <WifiOff className="size-3.5" aria-hidden="true" />
+      Sin conexión
+    </span>
+  )
+}
 
 export function Topbar() {
   const navigate = useNavigate()
@@ -51,6 +78,8 @@ export function Topbar() {
         </form>
 
         <div className="ml-auto flex items-center gap-2">
+          <OfflineIndicator />
+
           <Link to="/upload" className="btn-primary hidden sm:inline-flex">
             <Upload className="size-4" aria-hidden="true" />
             Subir

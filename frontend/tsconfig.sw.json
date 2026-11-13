@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // El service worker se compila con la librería WebWorker: no puede
+    // coexistir con DOM en el mismo programa (mismos identificadores).
+    "lib": ["ES2023", "WebWorker"],
+    "types": [],
+    "jsx": "react-jsx"
+  },
+  "include": ["src/sw.ts"],
+  "exclude": []
+}
