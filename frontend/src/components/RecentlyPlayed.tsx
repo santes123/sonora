@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { History, Trash2 } from 'lucide-react'
 import { SongCard } from './SongCard'
+import { InlineConfirm } from './InlineConfirm'
 import { useToast } from '../context/ToastContext'
 import { api, firstError } from '../lib/api'
 
@@ -15,7 +15,6 @@ import { api, firstError } from '../lib/api'
 export function RecentlyPlayed() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [confirming, setConfirming] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['history'],
@@ -54,41 +53,15 @@ export function RecentlyPlayed() {
             {entries.length}
           </span>
 
-          {confirming ? (
-            <span className="flex items-center gap-2 text-xs">
-              <span className="text-ink-300">¿Vaciar el historial?</span>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirming(false)
-                  clear.mutate()
-                }}
-                disabled={clear.isPending}
-                className="text-red-300 hover:text-red-200 font-semibold transition-colors disabled:opacity-50"
-              >
-                Sí, vaciar
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="text-ink-400 hover:text-ink-100 transition-colors"
-              >
-                Cancelar
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              disabled={clear.isPending}
-              className="text-ink-400 hover:text-red-300 inline-flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50"
-            >
-              <Trash2 className="size-3.5" aria-hidden="true" />
-              Vaciar
-            </button>
-          )}
+          <InlineConfirm
+            question="¿Vaciar el historial?"
+            confirmLabel="Sí, vaciar"
+            onConfirm={() => clear.mutate()}
+            disabled={clear.isPending}
+            icon={<Trash2 className="size-3.5" aria-hidden="true" />}
+            triggerLabel="Vaciar"
+            triggerClassName="text-ink-400 hover:text-red-300 inline-flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50"
+          />
         </div>
       </div>
 

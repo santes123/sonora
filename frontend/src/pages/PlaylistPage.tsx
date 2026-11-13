@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
+import { InlineConfirm } from '../components/InlineConfirm'
 import { PlaylistCover } from '../components/PlaylistCover'
 import { SongList } from '../components/SongList'
 import { PageLoader } from '../components/Spinner'
@@ -154,9 +155,7 @@ export function PlaylistPage() {
   }
 
   const handleDelete = () => {
-    if (window.confirm('¿Eliminar esta playlist? Esta acción no se puede deshacer.')) {
-      destroy.mutate()
-    }
+    destroy.mutate()
   }
 
   const move = (from: number, to: number) => {
@@ -339,15 +338,17 @@ export function PlaylistPage() {
                       <Pencil className="size-4" aria-hidden="true" />
                       Editar
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleDelete}
+                    <InlineConfirm
+                      question="¿Eliminar esta playlist? No se puede deshacer."
+                      confirmLabel="Sí, eliminar"
+                      onConfirm={handleDelete}
                       disabled={destroy.isPending}
-                      className="btn-ghost text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                      Eliminar
-                    </button>
+                      icon={<Trash2 className="size-4" aria-hidden="true" />}
+                      triggerLabel="Eliminar"
+                      triggerClassName="btn-ghost text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                      confirmClassName="btn-ghost text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                      questionClassName="text-ink-200 text-sm"
+                    />
                   </>
                 ) : null}
               </div>

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -65,5 +65,12 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
+  },
+  test: {
+    // Los tests de lógica pura no necesitan DOM, pero los de componentes sí
+    // (confirmaciones en línea, reproductor, gestor de descargas offline).
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })
