@@ -267,8 +267,41 @@ users ──< playlists ──< playlist_items >── songs
   - [ ] Perfiles de usuario.
 
 ### Fase 5 — Offline
-- [ ] Descarga de playlists a Cache Storage + IndexedDB (Dexie).
-- [ ] LRU, cuota, `persist()`, indicadores y reproducción offline real.
+- [x] Descarga de canciones (y atajo de playlist completa) a Cache Storage + IndexedDB (Dexie).
+  - Endpoint `POST /api/v1/offline/urls` (`auth:sanctum`): devuelve **URLs firmadas en lote**
+    (máx. 200 canciones) con `{song_id, url, bytes}`; una sola consulta con
+    `with('mediaAsset:id,path,size_bytes')`, respetando el orden pedido y omitiendo lo que no
+    tiene fichero. Evita el N+1 de red de pedir una firma por canción.
+  - Service worker propio (`src/sw.ts`, `injectManifest`, **sin dependencias**): precache
+    manual del shell desde `self.__WB_MANIFEST`, limpieza de cachés `sonora-*` antiguas en
+    `activate`, `clients.claim()`, y caché de audio en `sonora-audio-v1` **con soporte Range
+    (206)** para `/api/v1/media/*`. La API nunca se cachea.
+  - Puente por mensajes (`PING`, `CACHE_AUDIO`, `DELETE_AUDIO`, `CLEAR_AUDIO`, `LIST_AUDIO`)
+    con `MessageChannel` y timeout de 120 s; el audio vive en Cache Storage y los metadatos
+    en Dexie (`sonora-offline`, tabla `downloads` con `songId`, `cachedAt`, `lastAccessedAt`,
+    `*playlistIds`).
+  - Clave de caché = **pathname sin query** (`/api/v1/media/<token>`), no la URL firmada: el
+    token es el base64 de la ruta interna (estable y único por fichero), así la descarga
+    sobrevive a la caducidad de la firma (TTL 360 min) y el SW sirve sin revalidarla.
+  - Descarga por canción con atajo de playlist; concurrencia 2 (`runPool`), progreso en vivo.
+- [x] LRU, cuota, `persist()`, indicadores y reproducción offline real.
+  - Presupuesto: `min(1 GB, 50 % × (quota − uso ajeno))`. El uso propio **no** descuenta el
+    presupuesto (evita el paradoxical shrink que shrinkearía el límite con cada descarga).
+  - `navigator.storage.persist()` se pide en la **primera descarga**, con aviso previo
+    ("Conservar tus descargas") y salida "Ahora no".
+  - LRU por `lastAccessedAt`: el reproductor marca el uso al reproducir; la expulsión libera
+    espacio antes de descargar (`makeRoom` + `selectEvictions`).
+  - Página `/downloads`: resumen de cuota, estado de persistencia, reproducción, borrado
+    individual y "Liberar espacio" con `InlineConfirm`.
+  - Indicadores: badge "Sin conexión" en la cabecera, enlace "Descargas" en sidebar y móvil,
+    aviso por toast al intentar reproducir sin conexión una canción no descargada.
+  - **Auth tolerante a falta de red**: copia local del usuario en `localStorage`
+    (`sonora:user`); si `api.me()` falla por red (no 401) se usa la copia y se marca
+    `offline: true`. Solo un 401 explícito o un logout cierran la sesión.
+  - Verificado e2e: backend Docker apagado → `/downloads` sigue accesible y la canción
+    descargada se sirve desde la caché del SW con **206 Partial Content** (`audio/mpeg`).
+  - Tests: 70 en 11 ficheros de frontend (quota, LRU, pool, canción, `DownloadButton`,
+    `PlayerContext`), 100 de backend (9 nuevos del endpoint offline), Pint PASS.
 
 ### Fase 6 — Producción
 - [ ] Imagen multi-stage, `docker-compose.prod.yml`, TLS, cron, backups, restauración.
