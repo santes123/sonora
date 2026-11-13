@@ -51,6 +51,15 @@ export interface Song {
   created_at: string | null
 }
 
+/**
+ * Una entrada del historial de reproducción: la forma de la canción más
+ * cuándo se escuchó por última vez y cuántas veces se ha escuchado.
+ */
+export interface HistoryEntry extends Song {
+  played_at: string | null
+  play_count: number
+}
+
 export interface PlaylistItem {
   id: number
   position: number

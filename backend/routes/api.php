@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\FavoritesController;
 use App\Http\Controllers\Api\V1\GoogleAuthController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\HistoryController;
 use App\Http\Controllers\Api\V1\PlaylistController;
 use App\Http\Controllers\Api\V1\SongController;
 use App\Http\Controllers\Api\V1\SongLikeController;
@@ -59,5 +60,11 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/playlists/{playlist}/items', [PlaylistController::class, 'addItem'])->name('playlists.items.store');
         Route::delete('/playlists/{playlist}/items/{song}', [PlaylistController::class, 'removeItem'])->name('playlists.items.destroy');
         Route::put('/playlists/{playlist}/items', [PlaylistController::class, 'reorder'])->name('playlists.items.reorder');
+        Route::post('/playlists/{playlist}/cover', [PlaylistController::class, 'updateCover'])->name('playlists.cover.store');
+
+        // Historial de reproducción del usuario.
+        Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
+        Route::post('/history', [HistoryController::class, 'store'])->name('history.store');
+        Route::delete('/history', [HistoryController::class, 'destroy'])->name('history.destroy');
     });
 });

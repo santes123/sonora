@@ -85,6 +85,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Portadas de playlist
+    |--------------------------------------------------------------------------
+    |
+    | Límites más estrictos que las carátulas: la portada se sube por el
+    | usuario y se convierte en la propia petición HTTP, así que el pico de
+    | memoria del proceso (imagen decodificada) debe quedar acotado. Con
+    | pm.max_children = 5 workers, una imagen de 2500 px ocupa ~25 MB en
+    | lugar de los ~144 MB que ocuparía una de 6000 px.
+    |
+    */
+
+    'playlist_cover' => [
+        'max_source_kb' => (int) env('MEDIA_PLAYLIST_COVER_MAX_KB', 8192),
+        'max_source_dimension' => (int) env('MEDIA_PLAYLIST_COVER_MAX_DIMENSION', 2500),
+        'size' => 800,
+        'quality' => 82,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Binarios de metadatos
     |--------------------------------------------------------------------------
     */

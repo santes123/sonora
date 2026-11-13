@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  ImageUp,
   ListMusic,
   Loader2,
   Pencil,
@@ -14,8 +15,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { Cover } from '../components/Cover'
 import { EmptyState } from '../components/EmptyState'
+import { PlaylistCover } from '../components/PlaylistCover'
 import { SongList } from '../components/SongList'
 import { PageLoader } from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
@@ -109,6 +110,27 @@ export function PlaylistPage() {
     onError: (error) => toast.error(firstError(error)),
   })
 
+  const uploadCover = useMutation({
+    mutationFn: (file: File) => api.uploadPlaylistCover(playlistId, file),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['playlist', playlistId], updated)
+      queryClient.invalidateQueries({ queryKey: ['playlists'] })
+      toast.success('Portada actualizada.')
+    },
+    onError: (error) => toast.error(firstError(error)),
+  })
+
+  const handleCoverSelected = (file: File) => {
+    // Comprobación rápida en cliente para no subir 8 MB solo para que el
+    // servidor los rechace. El servidor vuelve a validarlo.
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error('La imagen supera el límite de 8 MB.')
+      return
+    }
+
+    uploadCover.mutate(file)
+  }
+
   const startEditing = () => {
     if (!playlist) {
       return
@@ -180,12 +202,48 @@ export function PlaylistPage() {
       </Link>
 
       <header className="flex flex-col gap-6 sm:flex-row sm:items-end">
-        <Cover
-          src={playlist.cover_url}
-          alt={`Portada de ${playlist.name}`}
-          className="size-40 shadow-2xl sm:size-48"
-          rounded="rounded-2xl"
-        />
+        <div className="relative shrink-0">
+          <PlaylistCover
+            playlist={playlist}
+            className="size-40 shadow-2xl sm:size-48"
+            rounded="rounded-2xl"
+          />
+
+          {isOwner ? (
+            <>
+              <label
+                htmlFor="playlist-cover-input"
+                className="bg-ink-950/70 absolute right-2 bottom-2 flex size-9 cursor-pointer items-center justify-center rounded-full text-white backdrop-blur transition-colors hover:bg-ink-950"
+                title="Cambiar portada"
+              >
+                {uploadCover.isPending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <ImageUp className="size-4" aria-hidden="true" />
+                )}
+                <span className="sr-only">Cambiar la portada de la playlist</span>
+              </label>
+
+              <input
+                id="playlist-cover-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                disabled={uploadCover.isPending}
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+
+                  if (file) {
+                    handleCoverSelected(file)
+                  }
+
+                  // Permite volver a elegir el mismo archivo.
+                  event.target.value = ''
+                }}
+              />
+            </>
+          ) : null}
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="text-accent-soft text-xs font-semibold tracking-wider uppercase">

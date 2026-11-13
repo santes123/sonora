@@ -75,6 +75,12 @@ class Song extends Model
         return $this->hasMany(PlaylistItem::class);
     }
 
+    /** @return HasMany<ListeningHistory, $this> */
+    public function listeningHistory(): HasMany
+    {
+        return $this->hasMany(ListeningHistory::class);
+    }
+
     /** @return BelongsToMany<User, $this> */
     public function likedByUsers(): BelongsToMany
     {

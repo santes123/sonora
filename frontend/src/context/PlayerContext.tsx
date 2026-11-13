@@ -7,7 +7,10 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type SyntheticEvent,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { api } from '../lib/api'
 import type { Song } from '../types'
 
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -75,6 +78,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false)
   const [shuffle, setShuffle] = useState(false)
   const [repeat, setRepeat] = useState<RepeatMode>('off')
+
+  // Pista ya registrada en el historial. Evita contar dos veces la misma
+  // canción cuando el usuario pausa y reanuda.
+  const recordedSongRef = useRef<number | null>(null)
+  const queryClient = useQueryClient()
 
   const current = useMemo<Song | null>(() => {
     const queueIndex = order[cursor]
@@ -262,6 +270,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audio.dataset.songId = String(current.id)
     audio.src = current.stream_url
     audio.load()
+    recordedSongRef.current = null
     setCurrentTime(0)
     setDuration(0)
   }, [current])
@@ -342,6 +351,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     next()
   }, [repeat, next])
 
+  /**
+   * Registra la reproducción cuando el audio empieza a sonar de verdad.
+   *
+   * Se usa el evento `playing` y no el cambio de pista para no contar
+   * canciones que el usuario nunca llegó a escuchar. La llamada es
+   * "dispara y olvida": el reproductor no espera a la API y el backend
+   * encola la escritura.
+   */
+  const handlePlaying = useCallback(
+    (event: SyntheticEvent<HTMLAudioElement>) => {
+      const songId = Number(event.currentTarget.dataset.songId)
+
+      if (!Number.isFinite(songId) || songId <= 0) {
+        return
+      }
+
+      // Pausar y reanudar no cuenta como una reproducción nueva.
+      if (recordedSongRef.current === songId) {
+        return
+      }
+
+      recordedSongRef.current = songId
+
+      void api
+        .recordPlay(songId)
+        .then(() => {
+          // La escritura está en cola: hay que dar margen al worker antes
+          // de refrescar el carrusel, o se leería el historial sin la
+          // canción recién escuchada.
+          window.setTimeout(() => {
+            void queryClient.invalidateQueries({ queryKey: ['history'] })
+          }, 1200)
+        })
+        .catch(() => {
+          // Perder una entrada del historial no debe interrumpir la música.
+          recordedSongRef.current = null
+        })
+    },
+    [queryClient],
+  )
+
   const value = useMemo<PlayerContextValue>(
     () => ({
       queue,
@@ -407,6 +457,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setDuration(Number.isFinite(value) ? value : 0)
         }}
         onEnded={handleEnded}
+        onPlaying={handlePlaying}
         onError={() => setIsPlaying(false)}
         className="hidden"
       />

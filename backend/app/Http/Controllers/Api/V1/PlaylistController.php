@@ -8,11 +8,13 @@ use App\Actions\Playlists\DeletePlaylistAction;
 use App\Actions\Playlists\RemoveSongFromPlaylistAction;
 use App\Actions\Playlists\ReorderPlaylistAction;
 use App\Actions\Playlists\UpdatePlaylistAction;
+use App\Actions\Playlists\UpdatePlaylistCoverAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Playlists\AddPlaylistItemRequest;
 use App\Http\Requests\Playlists\ReorderPlaylistRequest;
 use App\Http\Requests\Playlists\StorePlaylistRequest;
 use App\Http\Requests\Playlists\UpdatePlaylistRequest;
+use App\Http\Requests\Playlists\UploadPlaylistCoverRequest;
 use App\Http\Resources\PlaylistResource;
 use App\Models\Playlist;
 use App\Models\Song;
@@ -107,6 +109,24 @@ class PlaylistController extends Controller
         $songIds = $request->input('song_ids', []);
 
         $action->execute($playlist, $songIds);
+
+        return new PlaylistResource($this->loadDetails($playlist));
+    }
+
+    /**
+     * Sustituye la portada de la playlist por una imagen subida.
+     *
+     * La imagen se convierte a WebP acotado y se guarda en el almacenamiento
+     * privado de medios, igual que el resto de recursos.
+     */
+    public function updateCover(
+        UploadPlaylistCoverRequest $request,
+        Playlist $playlist,
+        UpdatePlaylistCoverAction $action,
+    ): PlaylistResource {
+        $this->authorize('update', $playlist);
+
+        $action->execute($playlist, $request->file('file'));
 
         return new PlaylistResource($this->loadDetails($playlist));
     }

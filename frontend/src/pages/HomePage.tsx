@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ListMusic, Play, Sparkles, Upload } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { PlaylistCard } from '../components/PlaylistCard'
+import { RecentlyPlayed } from '../components/RecentlyPlayed'
 import { SongList } from '../components/SongList'
 import { PageLoader } from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
@@ -140,6 +141,8 @@ export function HomePage() {
           </div>
         )}
       </section>
+
+      <RecentlyPlayed />
     </div>
   )
 }

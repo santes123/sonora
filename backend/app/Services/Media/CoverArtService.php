@@ -17,9 +17,23 @@ final class CoverArtService
         private readonly MediaStorage $storage,
     ) {}
 
-    public function storeFromBinary(string $binary): ?string
+    /**
+     * Convierte una imagen binaria en una carátula WebP acotada.
+     *
+     * @param  array{max_source_kb?: int, max_source_dimension?: int, size?: int, quality?: int}  $limits
+     *                                                                                                     Límites de la operación. Si no se pasan, se usan los de
+     *                                                                                                     `media.cover`, que son los de las carátulas extraídas del audio.
+     */
+    public function storeFromBinary(string $binary, array $limits = []): ?string
     {
-        $maxBytes = (int) config('media.cover.max_source_kb', 10240) * 1024;
+        $limits += [
+            'max_source_kb' => (int) config('media.cover.max_source_kb', 10240),
+            'max_source_dimension' => (int) config('media.cover.max_source_dimension', 6000),
+            'size' => (int) config('media.cover.size', 800),
+            'quality' => (int) config('media.cover.quality', 82),
+        ];
+
+        $maxBytes = $limits['max_source_kb'] * 1024;
 
         if ($binary === '' || strlen($binary) > $maxBytes) {
             return null;
@@ -32,14 +46,14 @@ final class CoverArtService
         }
 
         [$width, $height] = $info;
-        $maxDimension = (int) config('media.cover.max_source_dimension', 4000);
+        $maxDimension = $limits['max_source_dimension'];
 
         if ($width < 1 || $height < 1 || $width > $maxDimension || $height > $maxDimension) {
             return null;
         }
 
-        $size = (int) config('media.cover.size', 800);
-        $quality = (int) config('media.cover.quality', 82);
+        $size = $limits['size'];
+        $quality = $limits['quality'];
 
         try {
             $encoded = ImageManager::gd()

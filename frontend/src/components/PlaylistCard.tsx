@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Lock, Users } from 'lucide-react'
-import { Cover } from './Cover'
+import { PlaylistCover } from './PlaylistCover'
 import { pluralize } from '../lib/format'
 import type { Playlist } from '../types'
 
@@ -11,9 +11,8 @@ export function PlaylistCard({ playlist }: { playlist: Playlist }) {
       className="card group hover:border-ink-500 focus-visible:border-accent block p-3 transition-colors"
     >
       <div className="relative">
-        <Cover
-          src={playlist.cover_url}
-          alt={`Portada de ${playlist.name}`}
+        <PlaylistCover
+          playlist={playlist}
           className="aspect-square w-full"
           rounded="rounded-xl"
         />

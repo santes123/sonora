@@ -256,8 +256,15 @@ users ──< playlists ──< playlist_items >── songs
   - `POST|DELETE /api/v1/songs/{song}/like` idempotentes y `GET /api/v1/me/favorites` paginado.
   - `is_liked` en `SongResource`; filtro `liked=1` / `favorites=1` en `GET /api/v1/songs`.
   - Corazón interactivo en filas y reproductor; pestaña "Canciones que te gustan" en la Biblioteca.
-- [ ] Historial de reproducción.
+- [x] Historial de reproducción.
+  - Tabla `listening_history` con única `(user_id, song_id)` e índice `(user_id, played_at)` para el carrusel sin filesort.
+  - Registro asíncrono en cola (`RecordListeningJob`, upsert atómico `ON DUPLICATE KEY UPDATE`) desde el evento `playing` del `<audio>`; `POST /api/v1/history` responde `202`.
+  - `GET /api/v1/history` (última escucha + nº de reproducciones) y `DELETE /api/v1/history` para vaciarlo.
+  - Carrusel "Escuchado recientemente" en la Inicio con confirmación en línea antes de vaciar.
 - [ ] Perfiles y portadas personalizadas de playlist.
+  - [x] Portada de playlist: subida de imagen → WebP en línea (`POST /api/v1/playlists/{playlist}/cover`), con límites de memoria (8 MB / 2500 px).
+  - [x] Portada por defecto generada (color + inicial deterministas a partir del nombre, hash djb2).
+  - [ ] Perfiles de usuario.
 
 ### Fase 5 — Offline
 - [ ] Descarga de playlists a Cache Storage + IndexedDB (Dexie).

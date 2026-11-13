@@ -72,6 +72,12 @@ class User extends Authenticatable
             ->orderByPivot('created_at', 'desc');
     }
 
+    /** @return HasMany<ListeningHistory, $this> */
+    public function listeningHistory(): HasMany
+    {
+        return $this->hasMany(ListeningHistory::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::Admin;

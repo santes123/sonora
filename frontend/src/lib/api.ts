@@ -1,6 +1,7 @@
 import type {
   Album,
   Artist,
+  HistoryEntry,
   Paginated,
   Playlist,
   Song,
@@ -212,6 +213,38 @@ export const api = {
       method: 'PUT',
       body: { song_ids: songIds },
     }),
+
+  /**
+   * Sube una imagen como portada de la playlist. El backend la convierte a
+   * WebP acotado y devuelve la playlist actualizada.
+   */
+  uploadPlaylistCover: (playlistId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+
+    return resource<Playlist>(`/playlists/${playlistId}/cover`, {
+      method: 'POST',
+      body: form,
+    })
+  },
+
+  /**
+   * Historial de reproducción del usuario, de más reciente a más antigua.
+   */
+  history: (perPage = 12) =>
+    request<Paginated<HistoryEntry>>(`/history${toQueryString({ per_page: perPage })}`),
+
+  /**
+   * Registra una reproducción. El backend responde 202 y encola la
+   * escritura: el reproductor no debe esperar a esta llamada.
+   */
+  recordPlay: (songId: number) =>
+    request<{ data: { status: string } }>('/history', {
+      method: 'POST',
+      body: { song_id: songId },
+    }),
+
+  clearHistory: () => request<void>('/history', { method: 'DELETE' }),
 }
 
 /**
