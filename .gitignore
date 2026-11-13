@@ -1,0 +1,30 @@
+# Dependencias
+/backend/vendor/
+/backend/node_modules/
+/frontend/node_modules/
+
+# Entornos y secretos
+/backend/.env
+/backend/.env.backup
+/backend/.env.production
+/frontend/.env.local
+/frontend/.env.*.local
+
+# Medios y artefactos
+/backend/storage/app/private/media/*
+!/backend/storage/app/private/media/.gitkeep
+/backend/storage/logs/*
+/backend/database/*.sqlite
+/backend/database/*.sqlite-journal
+
+# Temporales de pruebas locales
+/.tmp/
+
+# Builds
+/frontend/dist/
+/frontend/dev-dist/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log

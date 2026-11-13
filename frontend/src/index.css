@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-950: #07070b;
+  --color-ink-900: #0c0c12;
+  --color-ink-850: #101017;
+  --color-ink-800: #15151e;
+  --color-ink-700: #1e1e2a;
+  --color-ink-600: #2a2a39;
+  --color-ink-500: #3b3b4d;
+  --color-ink-400: #6c6c81;
+  --color-ink-300: #9d9db0;
+  --color-ink-200: #c8c8d5;
+  --color-ink-100: #ececf3;
+
+  --color-accent: #8b5cf6;
+  --color-accent-strong: #7c3aed;
+  --color-accent-soft: #b39dff;
+  --color-hot: #f472b6;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-600) transparent;
+  }
+
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-100 font-sans antialiased;
+    background-image:
+      radial-gradient(60rem 40rem at 110% -10%, rgb(139 92 246 / 0.12), transparent 60%),
+      radial-gradient(50rem 30rem at -10% 0%, rgb(244 114 182 / 0.08), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: white;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent-soft);
+    outline-offset: 2px;
+  }
+
+  input[type='range'] {
+    accent-color: var(--color-accent);
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-ink-850/80 border-ink-700/70 rounded-2xl border backdrop-blur-sm;
+  }
+
+  /* Tailwind v4 solo permite @apply de utilidades, no de clases custom:
+     por eso cada variante repite la base en vez de hacer `@apply btn`. */
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-accent hover:bg-accent-strong text-white;
+  }
+
+  .btn-ghost {
+    @apply text-ink-200 hover:bg-ink-800 hover:text-white;
+  }
+
+  .btn-outline {
+    @apply border-ink-600 text-ink-100 hover:border-ink-400 border;
+  }
+
+  .icon-btn {
+    @apply text-ink-300 hover:bg-ink-800 hover:text-ink-100 inline-flex size-9 items-center justify-center rounded-full transition-colors disabled:opacity-40;
+  }
+
+  .field {
+    @apply bg-ink-900 border-ink-600 placeholder:text-ink-400 focus:border-accent w-full rounded-xl border px-4 py-2.5 text-sm text-white outline-none transition-colors;
+  }
+
+  .label {
+    @apply text-ink-200 mb-1.5 block text-sm font-medium;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
