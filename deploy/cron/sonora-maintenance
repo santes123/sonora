@@ -1,0 +1,20 @@
+# Mantenimiento del host de Sonora.
+#
+#   sudo cp deploy/cron/sonora-maintenance /etc/cron.d/sonora-maintenance
+#   sudo chmod 644 /etc/cron.d/sonora-maintenance
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Limpieza de imágenes Docker sin usar (la de la semana pasada).
+# `docker image prune -f` no toca las imágenes en uso.
+30 5 * * 0 root docker image prune -f >> /var/log/sonora-maintenance.log 2>&1
+
+# Limpieza de contenedores parados (no borra volúmenes ni datos).
+45 5 * * 0 root docker container prune -f >> /var/log/sonora-maintenance.log 2>&1
+
+# Comprobación del disco: si el disco se llena, la aplicación cae.
+0 6 * * * root /usr/bin/test $(/usr/bin/df -P /srv | awk 'NR==2 {print $5}' | tr -d '%') -lt 85 || /usr/bin/logger -t sonora "DISCO AL %: Filling up"
+
+# Reinicio de los servicios de Docker si el host se quedó sin memoria.
+0 4 * * * root /usr/bin/test $(/usr/bin/free -m | awk '/Mem:/ {print $7}') -lt 300 || /usr/bin/systemctl restart docker

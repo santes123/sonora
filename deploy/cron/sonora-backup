@@ -1,0 +1,33 @@
+# Copia de seguridad diaria de Sonora (base de datos + medios).
+#
+# Instalación:
+#   sudo cp deploy/cron/sonora-backup /etc/cron.d/sonora-backup
+#   sudo chmod 644 /etc/cron.d/sonora-backup
+#
+# Requisitos en el servidor:
+#   - /srv/sonora/deploy/backup.sh ejecutable
+#   - variables de entorno en /etc/default/sonora (DB_PASSWORD, MEDIA_DIR, ...)
+#
+# /etc/default/sonora:
+#   MEDIA_DIR=/srv/sonora/media
+#   COMPOSE_FILE=/srv/sonora/docker-compose.prod.yml
+#   DB_USER=music
+#   DB_PASSWORD=...
+#   DB_ROOT_PASSWORD=...
+#   BACKUP_ROOT=/srv/sonora/backups
+#   KEEP_DAYS=7
+#   KEEP_WEEKS=4
+#   # Copia offsite cifrada (opcional):
+#   # RESTIC_REPOSITORY=s3:mi-bucket/sonora
+#   # RESTIC_PASSWORD=...
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Copia diaria a las 02:30 (el GC de medios corre a las 03:15 dentro del
+# contenedor scheduler, así que no se solapan con la copia).
+30 2 * * * root . /etc/default/sonora 2>/dev/null; [ -f /etc/default/sonora ] && . /etc/default/sonora; /srv/sonora/deploy/backup.sh >> /var/log/sonora-backup.log 2>&1
+
+# Verificación: cada domingo a las 04:00 se restaura la copia en una base
+# scratch. Una copia que no se restaura no es una copia.
+0 4 * * 0 root . /etc/default/sonora 2>/dev/null; [ -f /etc/default/sonora ] && . /etc/default/sonora; /srv/sonora/deploy/backup.sh --verify >> /var/log/sonora-backup.log 2>&1

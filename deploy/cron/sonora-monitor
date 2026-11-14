@@ -1,0 +1,10 @@
+# Monitor de salud de Sonora: se ejecuta cada 5 minutos y avisa al syslog
+# si algo falla. Para alertas por correo o webhook, encadenar la salida.
+#
+#   sudo cp deploy/cron/sonora-monitor /etc/cron.d/sonora-monitor
+#   sudo chmod 644 /etc/cron.d/sonora-monitor
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+*/5 * * * * root . /etc/default/sonora 2>/dev/null; [ -f /etc/default/sonora ] && . /etc/default/sonora; /srv/sonora/deploy/monitor.sh > /tmp/sonora-monitor.out 2>&1; if [ $? -ne 0 ]; then logger -t sonora-monitor "Fallo en el monitor de salud"; cat /tmp/sonora-monitor.out | logger -t sonora-monitor; fi
