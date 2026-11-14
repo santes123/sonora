@@ -44,7 +44,7 @@ class SongLikeController extends Controller
      */
     private function withLikeState(Song $song, bool $liked): Song
     {
-        $song->load(['artist', 'album', 'mediaAsset:id,path']);
+        $song->load(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name']);
         $song->setAttribute('is_liked', $liked);
 
         return $song;

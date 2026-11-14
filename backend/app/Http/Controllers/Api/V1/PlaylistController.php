@@ -140,7 +140,7 @@ class PlaylistController extends Controller
             // El estado "me gusta" es por usuario: sin `withIsLiked` las
             // canciones de la playlist saldrían siempre como no favoritas.
             'items.song' => fn ($query) => $query
-                ->with(['artist', 'album', 'mediaAsset:id,path'])
+                ->with(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name'])
                 ->withIsLiked($userId),
         ]);
     }

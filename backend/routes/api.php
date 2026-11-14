@@ -42,6 +42,9 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/songs', [SongController::class, 'store'])
             ->middleware('throttle:uploads')
             ->name('songs.store');
+        Route::patch('/songs/{song}', [SongController::class, 'update'])->name('songs.update');
+        Route::post('/songs/{song}/cover', [SongController::class, 'updateCover'])
+            ->name('songs.cover.store');
         Route::delete('/songs/{song}', [SongController::class, 'destroy'])->name('songs.destroy');
         Route::post('/songs/{song}/like', [SongLikeController::class, 'store'])->name('songs.like');
         Route::delete('/songs/{song}/like', [SongLikeController::class, 'destroy'])->name('songs.unlike');

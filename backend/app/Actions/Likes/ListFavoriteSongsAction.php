@@ -19,7 +19,7 @@ class ListFavoriteSongsAction
         return $user->likedSongs()
             // Eager loading explícito: sin esto, la serialización de cada
             // canción abriría una consulta por artista, álbum y medio.
-            ->with(['artist', 'album', 'mediaAsset:id,path'])
+            ->with(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name'])
             ->withIsLiked($user->id)
             ->paginate($perPage);
     }

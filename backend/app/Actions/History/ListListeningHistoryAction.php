@@ -21,7 +21,7 @@ class ListListeningHistoryAction
             // Eager loading explícito: sin esto, serializar cada entrada
             // abriría una consulta por canción, artista, álbum y medio.
             ->with(['song' => fn ($query) => $query
-                ->with(['artist', 'album', 'mediaAsset:id,path'])
+                ->with(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name'])
                 ->withIsLiked($user->id),
             ])
             ->orderByDesc('played_at')

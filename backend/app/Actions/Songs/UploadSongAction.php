@@ -11,6 +11,7 @@ use App\Models\Artist;
 use App\Models\MediaAsset;
 use App\Models\Song;
 use App\Models\User;
+use App\Services\Catalog\CatalogResolver;
 use App\Services\Media\MediaStorage;
 use App\Services\Media\MetadataExtractor;
 use App\Support\TextNormalizer;
@@ -33,6 +34,7 @@ final class UploadSongAction
     public function __construct(
         private readonly MediaStorage $storage,
         private readonly MetadataExtractor $extractor,
+        private readonly CatalogResolver $catalog,
     ) {}
 
     public function execute(UploadSongData $data, User $user): UploadSongResult
@@ -140,51 +142,17 @@ final class UploadSongAction
 
     private function resolveArtist(?string $name): Artist
     {
-        $name = trim((string) $name);
-        $name = $name !== '' ? $name : 'Artista desconocido';
-        $normalized = TextNormalizer::normalize($name);
-        $normalized = $normalized !== '' ? $normalized : 'artista desconocido';
-
-        $now = now();
-
-        Artist::query()->insertOrIgnore([
-            'name' => mb_substr($name, 0, 255),
-            'name_normalized' => mb_substr($normalized, 0, 255),
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-
-        return Artist::query()->where('name_normalized', $normalized)->firstOrFail();
+        return $this->catalog->resolveArtist($name);
     }
 
     private function resolveAlbum(AudioMetadata $metadata, Artist $songArtist): ?Album
     {
-        $title = trim((string) $metadata->albumTitle);
-
-        if ($title === '') {
-            return null;
-        }
-
-        $albumArtist = $metadata->albumArtist !== null && trim($metadata->albumArtist) !== ''
-            ? $this->resolveArtist($metadata->albumArtist)
-            : $songArtist;
-
-        $normalized = TextNormalizer::normalize($title);
-        $now = now();
-
-        Album::query()->insertOrIgnore([
-            'artist_id' => $albumArtist->id,
-            'title' => mb_substr($title, 0, 255),
-            'title_normalized' => mb_substr($normalized, 0, 255),
-            'year' => $metadata->year,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-
-        return Album::query()
-            ->where('artist_id', $albumArtist->id)
-            ->where('title_normalized', $normalized)
-            ->firstOrFail();
+        return $this->catalog->resolveAlbum(
+            $metadata->albumTitle,
+            $metadata->albumArtist,
+            $songArtist,
+            $metadata->year,
+        );
     }
 
     private function pathFor(string $hash, string $extension): string

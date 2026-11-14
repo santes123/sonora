@@ -3,10 +3,15 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Songs\DeleteSongAction;
+use App\Actions\Songs\UpdateSongAction;
+use App\Actions\Songs\UpdateSongCoverAction;
 use App\Actions\Songs\UploadSongAction;
+use App\Data\UpdateSongData;
 use App\Data\UploadSongData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Songs\SongIndexRequest;
+use App\Http\Requests\Songs\UpdateSongRequest;
+use App\Http\Requests\Songs\UploadSongCoverRequest;
 use App\Http\Requests\Songs\UploadSongRequest;
 use App\Http\Resources\SongResource;
 use App\Models\Song;
@@ -96,6 +101,45 @@ class SongController extends Controller
         return (new SongResource($result->song))
             ->response()
             ->setStatusCode($result->deduplicated ? 200 : 201);
+    }
+
+    /**
+     * Corrige los metadatos de la canción (título, artista, álbum, pista,
+     * disco, año y género).
+     *
+     * Es una edición parcial: los campos que no se envían se quedan como
+     * estaban. Sin esto, un título mal escrito era definitivo: al resubir el
+     * mismo fichero la deduplicación por hash devuelve la canción existente
+     * sin tocar sus metadatos.
+     */
+    public function update(
+        UpdateSongRequest $request,
+        Song $song,
+        UpdateSongAction $action,
+    ): SongResource {
+        $this->authorize('update', $song);
+
+        // Solo se envían los campos presentes en la petición: la presencia
+        // decide si el campo se toca o se vacía (ver UpdateSongData).
+        $updated = $action->execute($song, new UpdateSongData($request->validated()));
+
+        return new SongResource($updated);
+    }
+
+    /**
+     * Sustituye la carátula de la canción por una imagen subida por el
+     * usuario (por si el audio no traía arte incrustado).
+     */
+    public function updateCover(
+        UploadSongCoverRequest $request,
+        Song $song,
+        UpdateSongCoverAction $action,
+    ): SongResource {
+        $this->authorize('update', $song);
+
+        $action->execute($song, $request->file('file'));
+
+        return new SongResource($song->load(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name']));
     }
 
     public function destroy(Song $song, DeleteSongAction $action): Response
