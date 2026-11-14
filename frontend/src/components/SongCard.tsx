@@ -1,5 +1,6 @@
 import { Pause, Play } from 'lucide-react'
 import { Cover } from './Cover'
+import { SongActions } from './SongActions'
 import { usePlayer } from '../context/PlayerContext'
 import { cn } from '../lib/format'
 import type { Song } from '../types'
@@ -59,6 +60,10 @@ export function SongCard({ song, queue, index, className }: SongCardProps) {
             <Play className="ml-0.5 size-4 fill-current" aria-hidden="true" />
           )}
         </button>
+
+        <div className="absolute top-2 right-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <SongActions song={song} />
+        </div>
       </div>
 
       <p className="mt-2 truncate text-sm font-medium text-white">{song.title}</p>

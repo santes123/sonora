@@ -52,6 +52,22 @@ export interface Song {
 }
 
 /**
+ * Metadatos corregibles de una canción.
+ *
+ * La presencia de la clave es lo que decide: si no se envía, el campo no se
+ * toca; si se envía vacío, se vacía.
+ */
+export interface SongUpdate {
+  title?: string
+  artist_name?: string
+  album_title?: string | null
+  track_number?: number | null
+  disc_number?: number | null
+  year?: number | null
+  genre?: string | null
+}
+
+/**
  * Una entrada del historial de reproducción: la forma de la canción más
  * cuándo se escuchó por última vez y cuántas veces se ha escuchado.
  */

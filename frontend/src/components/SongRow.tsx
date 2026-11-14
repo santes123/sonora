@@ -5,6 +5,7 @@ import { AddToPlaylistMenu } from './AddToPlaylistMenu'
 import { Cover } from './Cover'
 import { DownloadButton } from './DownloadButton'
 import { LikeButton } from './LikeButton'
+import { SongActions } from './SongActions'
 import { usePlayer } from '../context/PlayerContext'
 import { cn, formatDuration } from '../lib/format'
 import type { Song } from '../types'
@@ -147,6 +148,7 @@ export function SongRow({
         <LikeButton song={song} />
         <DownloadButton song={song} />
         <AddToPlaylistMenu song={song} />
+        <SongActions song={song} />
         {extraActions}
       </div>
     </div>

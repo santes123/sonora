@@ -7,6 +7,7 @@ import type {
   Playlist,
   Song,
   SongQuery,
+  SongUpdate,
   User,
 } from '../types'
 
@@ -182,6 +183,25 @@ export const api = {
 
   likeSong: (id: number) => resource<Song>(`/songs/${id}/like`, { method: 'POST' }),
   unlikeSong: (id: number) => resource<Song>(`/songs/${id}/like`, { method: 'DELETE' }),
+
+  /**
+   * Corrige los metadatos de una canción.
+   *
+   * Los campos ausentes no se tocan; los presentes con valor vacío se
+   * vacían (quitar el álbum o el género).
+   */
+  updateSong: (id: number, changes: SongUpdate) =>
+    resource<Song>(`/songs/${id}`, { method: 'PATCH', body: changes }),
+
+  /**
+   * Sustituye la carátula de una canción por una imagen subida.
+   */
+  updateSongCover: (id: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+
+    return resource<Song>(`/songs/${id}/cover`, { method: 'POST', body: form })
+  },
   favorites: (perPage = 50) =>
     request<Paginated<Song>>(`/me/favorites${toQueryString({ per_page: perPage })}`),
 
