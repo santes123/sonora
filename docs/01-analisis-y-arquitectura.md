@@ -304,8 +304,26 @@ users ──< playlists ──< playlist_items >── songs
     `PlayerContext`), 100 de backend (9 nuevos del endpoint offline), Pint PASS.
 
 ### Fase 6 — Producción
-- [ ] Imagen multi-stage, `docker-compose.prod.yml`, TLS, cron, backups, restauración.
-- [ ] Observabilidad, límites, pruebas de carga y checklist de seguridad.
+- [x] Imagen multi-stage (`docker/Dockerfile`).
+  - Stages: `php-base` (extensiones) → `backend-deps` (composer `--no-dev`) → `frontend` (Vite) → `app` (PHP-FPM) y `web` (nginx con la SPA).
+  - La imagen final no lleva herramientas de compilación ni dev deps (verificado: sin `gcc/make/autoconf`, sin `laravel/pail`).
+  - Entrypoint de producción: espera a la base de datos, resuelve `APP_KEY`, ejecuta migraciones opcionalmente y regenera las cachés de Laravel (config/rutas/vistas) en cada arranque.
+  - `opcache.validate_timestamps=0` (la imagen es inmutable) y pool de PHP-FPM parametrizable por entorno.
+- [x] `docker-compose.prod.yml` con `app`, `queue`, `scheduler`, `mariadb` y `redis`.
+  - MariaDB y Redis **solo** en `127.0.0.1` y red interna; PHP-FPM publicado únicamente en `127.0.0.1:9000`.
+  - `max_connections=100`, buffer pool 2G, slow query log a 0,5 s; Redis con `noeviction` (nunca evicta sesiones ni jobs).
+  - Perfil opcional `nginx-docker` para servir también la web desde Docker.
+- [x] TLS con nginx + Certbot (Let's Encrypt) y renovación por `certbot.timer`.
+  - Configuración del host en `deploy/nginx/`: redirección 80→443 (excluyendo el reto de ACME), HSTS, TLS 1.2/1.3, `limit`-de-cabeceras y `log_format` con `rt`/`urt`.
+- [x] Cron: copia diaria + verificación semanal con restauración real, monitor de salud cada 5 minutos, mantenimiento (prune de Docker, disco, memoria), `media:gc` dentro del contenedor `scheduler` y `logrotate`.
+- [x] Backups y restauración (`deploy/backup.sh`, `deploy/restore.sh`).
+  - Dump con `--single-transaction` + medios + `sha256`, retención 7 diarios / 4 semanales y copia offsite cifrada opcional con `restic`.
+  - La verificación restaura la copia en una base scratch y compara conteos.
+- [x] Observabilidad: `/api/v1/health` (DB + Redis), `X-Request-Id` en cada respuesta, log de nginx con tiempo de respuesta, slow query log, y `deploy/monitor.sh` como comprobación periódica.
+- [x] Límites: 120 req/min por usuario en la API, 8/min en login, 120 subidas/hora, 256 MB por fichero, `PHP_FPM_MAX_CHILDREN` por entorno, `max_connections` de MariaDB y `maxmemory` de Redis.
+- [x] Pruebas de carga: guion k6 (`deploy/load/api.js`) con usuarios autenticados y umbrales, y script rápido en Node (`deploy/load/quick.js`).
+- [x] Checklist de seguridad (`docs/03-checklist-seguridad.md`).
+- [ ] Despliegue real en `music.antoniogmportfolio.online` (pendiente de servidor y DNS).
 
 ---
 
