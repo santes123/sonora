@@ -18,6 +18,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
         $middleware->throttleApi();
         $middleware->api(append: [AssignRequestId::class]);
+
+        // El único que alcanza PHP-FPM es nuestro propio nginx (el del host
+        // o el contenedor `web`), que añade X-Forwarded-Proto y
+        // X-Forwarded-For. Sin esto, Laravel creería que la petición llega
+        // en http plano desde 127.0.0.1: las cookies de sesión no serían
+        // "secure" y el rate limit por IP trataría a todos los usuarios como
+        // el mismo.
+        $middleware->trustProxies(at: '*');
+
+        // La API no tiene página de login: una petición no autenticada debe
+        // responder 401 JSON. Sin esto, Laravel intenta redirigir a la ruta
+        // `login`, que no existe, y responde 500.
+        $middleware->redirectGuestsTo(static fn (Request $request): ?string => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

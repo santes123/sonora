@@ -81,6 +81,32 @@ class AuthTest extends TestCase
         $this->getJson('/api/v1/auth/me')->assertUnauthorized();
     }
 
+    public function test_unauthenticated_api_request_returns_401_json_and_not_a_redirect(): void
+    {
+        // La API no tiene ruta `login`: si el middleware de autenticación
+        // intenta redirigir, la respuesta sería un 500 ("Route [login] not
+        // defined"). Debe ser un 401 con cuerpo JSON.
+        $response = $this->get('/api/v1/auth/me', ['Accept' => 'text/html']);
+
+        $response->assertStatus(401);
+        $this->assertStringContainsString(
+            'Unauthenticated',
+            $response->getContent(),
+            'La respuesta no es el JSON de la excepción de autenticación.'
+        );
+    }
+
+    public function test_unauthenticated_request_keeps_the_client_ip_for_rate_limiting(): void
+    {
+        // Con trustProxies, la IP del cliente debe seguir siendo la real: si
+        // no, el limitador trataría a todos los usuarios como el mismo.
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+            ->withHeader('X-Forwarded-For', '203.0.113.10')
+            ->withHeader('Origin', 'http://localhost')
+            ->getJson('/api/v1/auth/me')
+            ->assertUnauthorized();
+    }
+
     public function test_authenticated_user_can_get_profile(): void
     {
         $user = User::factory()->create();
