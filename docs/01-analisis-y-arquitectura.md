@@ -265,6 +265,12 @@ users ──< playlists ──< playlist_items >── songs
   - [x] Portada de playlist: subida de imagen → WebP en línea (`POST /api/v1/playlists/{playlist}/cover`), con límites de memoria (8 MB / 2500 px).
   - [x] Portada por defecto generada (color + inicial deterministas a partir del nombre, hash djb2).
   - [ ] Perfiles de usuario.
+- [x] Corrección de canciones (editar metadatos, carátula y eliminar).
+  - `PATCH /api/v1/songs/{song}` (uploader o admin) con edición **parcial**: solo se tocan los campos presentes; los desnormalizados (`artist_name`, `album_title` y sus versiones normalizadas) se recalculan para que el FULLTEXT y los listados no se descuadren.
+  - `POST /api/v1/songs/{song}/cover` → WebP acotado en línea (mismo servicio `CoverArtService` que las portadas de playlist).
+  - `CatalogResolver` compartido por la subida y la edición: mismas reglas de normalización y de "artista desconocido", sin duplicar la lógica de entidades.
+  - Menú de acciones (⋯) en filas y tarjetas: editar y eliminar, con confirmación en línea.
+  - **Por qué existía**: al resubir el mismo fichero la deduplicación por SHA-256 devuelve la canción existente sin tocar sus metadatos, así que un título mal escrito o una carátula ausente quedaban atascados para siempre.
 
 ### Fase 5 — Offline
 - [x] Descarga de canciones (y atajo de playlist completa) a Cache Storage + IndexedDB (Dexie).

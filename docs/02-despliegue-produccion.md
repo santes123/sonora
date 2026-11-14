@@ -6,6 +6,40 @@ en el stack de producción local (imagen multi-stage + `docker-compose.prod.yml`
 
 ---
 
+## 0. Despliegue en un solo comando
+
+Hay un script que hace todo lo de este documento: comprueba el sistema,
+prepara las carpetas, despliega el código, construye las imágenes, levanta el
+stack, instala nginx con TLS, programa las tareas y verifica que todo
+responde.
+
+```bash
+# En el servidor, con el repositorio ya clonado:
+sudo ./deploy/deploy.sh \
+    --domain music.antoniogmportfolio.online \
+    --email tu@email.com
+```
+
+Opciones útiles:
+
+| Opción | Para qué |
+|---|---|
+| `--repo URL` | Desplegar desde un repositorio git (actualiza el código solo) |
+| `--branch RAMA` | Rama a desplegar (por defecto `main`) |
+| `--app-key CLAVE` | Fijar el `APP_KEY` (si no, se genera y se guarda) |
+| `--db-password CLAVE` | Fijar la contraseña de MariaDB (si no, se genera) |
+| `--skip-tls` | Probar el despliegue antes de que el DNS apunte |
+| `--skip-build` | No reconstruir imágenes (despliegue rápido) |
+| `--skip-cron` | No instalar las tareas programadas |
+
+Al terminar imprime el estado de los servicios, la contraseña de la base de
+datos y los comandos para actualizar, hacer backup y revisar el estado.
+
+> El script es **idempotente**: se puede volver a ejecutar para actualizar.
+> No toca `backend/.env.production` si ya existe (solo rellena lo que falta).
+
+---
+
 ## 1. Arquitectura de producción
 
 ```
