@@ -1,0 +1,206 @@
+# Entorno de PRODUCCIÓN de Sonora.
+#
+# No es el entorno de desarrollo (docker-compose.yml): aquí no hay bind mounts
+# del código, no se instalan dev deps y todo se configura por variables de
+# entorno. El código viaja dentro de la imagen.
+#
+# Uso (en el servidor):
+#
+#   docker compose --env-file backend/.env.production \
+#       -f docker-compose.prod.yml up -d --build
+#
+# Topología por defecto: el nginx del host termina el TLS, sirve la SPA
+# compilada y hace de proxy hacia PHP-FPM (127.0.0.1:9000) y hacia los medios
+# privados (X-Accel-Redirect). En Docker solo viven la aplicación y sus
+# dependencias de datos.
+#
+# Topología alternativa (nginx también en Docker):
+#
+#   docker compose --env-file backend/.env.production \
+#       -f docker-compose.prod.yml --profile nginx-docker up -d --build
+#
+# Documentación: docs/02-despliegue-produccion.md
+name: sonora
+
+x-app: &app
+  image: sonora-app:prod
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: app
+  env_file:
+    - backend/.env.production
+  environment:
+    APP_ENV: production
+    APP_DEBUG: "false"
+    # Migraciones y cachés de Laravel al arrancar (idempotentes).
+    RUN_MIGRATIONS: "${RUN_MIGRATIONS:-false}"
+    OPTIMIZE_APP: "${OPTIMIZE_APP:-true}"
+    DB_WAIT_SECONDS: "${DB_WAIT_SECONDS:-60}"
+    # Pool de PHP-FPM (ver docker/php/php-fpm-prod.conf).
+    PHP_FPM_MAX_CHILDREN: "${PHP_FPM_MAX_CHILDREN:-10}"
+    PHP_FPM_START_SERVERS: "${PHP_FPM_START_SERVERS:-3}"
+    PHP_FPM_MIN_SPARE_SERVERS: "${PHP_FPM_MIN_SPARE_SERVERS:-2}"
+    PHP_FPM_MAX_SPARE_SERVERS: "${PHP_FPM_MAX_SPARE_SERVERS:-4}"
+    PHP_FPM_MAX_REQUESTS: "${PHP_FPM_MAX_REQUESTS:-500}"
+  volumes:
+    # Medios privados: bind mount para que el nginx del host pueda leerlos
+    # (X-Accel-Redirect). En Windows esta ruta no existe y no se usa.
+    - "${MEDIA_DIR:-/srv/sonora/media}:/var/www/html/storage/app/private/media"
+  depends_on:
+    mariadb:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  networks: [sonora]
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  # --- Aplicación (PHP-FPM) --------------------------------------------------
+  app:
+    <<: *app
+    ports:
+      # Solo localhost: lo consume el nginx del host.
+      - "127.0.0.1:${BIND_FPM_PORT:-9000}:9000"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # --- Cola (trabajos en segundo plano: portada WebP, metadatos) --------------
+  queue:
+    <<: *app
+    command:
+      - php
+      - artisan
+      - queue:work
+      - --queue=media,default
+      - --tries=3
+      - --timeout=300
+      - --max-time=3600
+      - --sleep=3
+    depends_on:
+      app:
+        condition: service_started
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # --- Planificador (media:gc diario, purga de cola semanal) -----------------
+  scheduler:
+    <<: *app
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      app:
+        condition: service_started
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # --- MariaDB ---------------------------------------------------------------
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-root}"
+      MARIADB_DATABASE: "${DB_DATABASE:-music}"
+      MARIADB_USER: "${DB_USERNAME:-music}"
+      MARIADB_PASSWORD: "${DB_PASSWORD:-secret}"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Mismo comportamiento de FULLTEXT que en desarrollo.
+      - --innodb-ft-min-token-size=3
+      # Buffer pool: ~25 % de la RAM del servidor (8 GB -> 2G).
+      - --innodb-buffer-pool-size=${INNODB_BUFFER_POOL_SIZE:-2G}
+      # Conexiones: por worker de PHP (10) + cola + scheduler + admin.
+      - --max-connections=${MARIADB_MAX_CONNECTIONS:-100}
+      # Slow query log para cazar cuellos de botella antes de que duelan.
+      - --slow-query-log=1
+      - --long-query-time=0.5
+      - --log-output=FILE
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+    ports:
+      # Solo localhost, para administration. Nunca expuesto a Internet.
+      - "127.0.0.1:${BIND_MARIADB_PORT:-3307}:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [sonora]
+    logging: *logging
+
+  # --- Redis (sesiones, caché y colas) ---------------------------------------
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      # `noeviction`: si Redis se llena, debe fallar la escritura en lugar de
+      # evictar claves de sesión o jobs de la cola silenciosamente.
+      - --maxmemory
+      - "${REDIS_MAXMEMORY:-256mb}"
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:${BIND_REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [sonora]
+    logging: *logging
+
+  # --- Web (nginx) — solo con el perfil `nginx-docker` ------------------------
+  # Topología alternativa: el nginx del host solo hace de proxy TLS hacia este
+  # contenedor (127.0.0.1:8080).
+  web:
+    profiles: ["nginx-docker"]
+    image: sonora-web:prod
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: web
+    volumes:
+      - "${MEDIA_DIR:-/srv/sonora/media}:/var/www/html/storage/app/private/media:ro"
+    environment:
+      # Plantilla de nginx: upstream de PHP-FPM.
+      SONORA_APP_HOST: app
+      SONORA_APP_PORT: "9000"
+    ports:
+      - "127.0.0.1:${BIND_WEB_PORT:-8080}:80"
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+    networks: [sonora]
+    logging: *logging
+
+volumes:
+  mariadb_data:
+  redis_data:
+
+networks:
+  sonora:
+    driver: bridge
