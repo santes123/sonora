@@ -11,8 +11,12 @@ RUN apk add --no-cache \
         freetype \
         libwebp \
         oniguruma \
-        tzdata \
-    && apk add --no-cache --virtual .build-deps \
+        tzdata
+
+# Herramientas de compilación. OJO: `docker-php-ext-install` purga el grupo
+# .phpize-deps (autoconf, gcc, make...) cuando termina, así que la extensión
+# PECL se compila ANTES, en su propio paso.
+RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         icu-dev \
         libzip-dev \
@@ -20,8 +24,15 @@ RUN apk add --no-cache \
         libjpeg-turbo-dev \
         freetype-dev \
         libwebp-dev \
-        oniguruma-dev \
-    && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
+        oniguruma-dev
+
+# Extensión PECL: aquí siguen presentes las herramientas de compilación.
+RUN pecl install redis \
+    && docker-php-ext-enable redis
+
+# Extensiones de PHP. Este script borra las herramientas de compilación al
+# finalizar, por eso va después de `pecl install redis`.
+RUN docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
         exif \
@@ -30,10 +41,10 @@ RUN apk add --no-cache \
         opcache \
         pcntl \
         pdo_mysql \
-        zip \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
-    && apk del .build-deps
+        zip
+
+# Limpieza de las herramientas de compilación (la imagen final no las lleva).
+RUN apk del --no-network .build-deps || true
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
