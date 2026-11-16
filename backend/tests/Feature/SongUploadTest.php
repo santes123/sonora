@@ -94,7 +94,7 @@ class SongUploadTest extends TestCase
             ->assertJsonValidationErrors('file');
     }
 
-    public function test_uploader_can_delete_song_and_orphan_media_is_removed(): void
+    public function test_uploader_can_delete_song_and_the_media_is_kept_for_a_possible_restore(): void
     {
         $user = User::factory()->create();
         Sanctum::actingAs($user);
@@ -107,9 +107,30 @@ class SongUploadTest extends TestCase
 
         $this->deleteJson("/api/v1/songs/{$songId}")->assertNoContent();
 
-        $this->assertDatabaseMissing('songs', ['id' => $songId]);
-        $this->assertDatabaseCount('media_assets', 0);
-        $this->assertCount(0, Storage::disk('media')->allFiles('tracks'));
+        // Borrado lógico: la fila y el binario sobreviven para poder
+        // restaurar la canción más adelante.
+        $this->assertSoftDeleted('songs', ['id' => $songId]);
+        $this->assertDatabaseCount('media_assets', 1);
+        $this->assertCount(1, Storage::disk('media')->allFiles('tracks'));
+    }
+
+    public function test_a_deleted_song_disappears_from_the_catalogue(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $response = $this->post('/api/v1/songs', [
+            'file' => UploadedFile::fake()->createWithContent('oculta.mp3', str_repeat('hidden-', 100)),
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $songId = $response->json('data.id');
+
+        $this->deleteJson("/api/v1/songs/{$songId}")->assertNoContent();
+
+        $this->getJson('/api/v1/songs')->assertOk()
+            ->assertJsonPath('data', []);
+
+        $this->getJson("/api/v1/songs/{$songId}")->assertNotFound();
     }
 
     public function test_other_users_cannot_delete_a_song(): void
@@ -121,7 +142,7 @@ class SongUploadTest extends TestCase
         $this->deleteJson("/api/v1/songs/{$song->id}")->assertForbidden();
     }
 
-    public function test_deleting_a_song_updates_playlist_counters(): void
+    public function test_deleting_a_song_keeps_it_in_the_playlist_marked_as_unavailable(): void
     {
         $owner = User::factory()->create();
         $song = Song::factory()->create([
@@ -139,9 +160,15 @@ class SongUploadTest extends TestCase
 
         $this->deleteJson("/api/v1/songs/{$song->id}")->assertNoContent();
 
+        // La entrada permanece: quitarla dejaría un hueco invisible en la
+        // playlist de otra persona. Se marca como no disponible.
+        $this->getJson("/api/v1/playlists/{$playlist->id}")->assertOk()
+            ->assertJsonPath('data.items.0.song.is_deleted', true)
+            ->assertJsonPath('data.items.0.song.stream_url', null);
+
         $playlist->refresh();
 
-        $this->assertSame(0, $playlist->songs_count);
-        $this->assertSame(0, $playlist->duration_ms);
+        $this->assertSame(1, $playlist->songs_count);
+        $this->assertSame(120_000, $playlist->duration_ms);
     }
 }

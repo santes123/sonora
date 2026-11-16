@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Song;
 use App\Services\Media\MediaStorage;
 use App\Support\AudioFormats;
 use Illuminate\Http\Request;
@@ -23,11 +24,25 @@ class StreamMediaController extends Controller
         'webp', 'jpg', 'jpeg', 'png',
     ];
 
-    public function __invoke(Request $request, string $token, MediaStorage $storage): Response
-    {
+    /**
+     * @param  int|null  $song  Canción a la que pertenece el medio, si la URL
+     *                          se emitió para el audio de una canción.
+     */
+    public function __invoke(
+        Request $request,
+        string $token,
+        MediaStorage $storage,
+        ?int $song = null,
+    ): Response {
         $path = $this->decodePath($token);
 
         abort_if($path === null, 404);
+
+        // Una canción eliminada deja de servirse aunque alguien conserve una
+        // URL firmada antigua. La comprobación es por clave primaria: una
+        // consulta, sin tocar el índice de medios.
+        abort_if($song !== null && $this->songIsDeleted($song), 404);
+
         abort_unless($storage->exists($path), 404);
 
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
@@ -52,6 +67,20 @@ class StreamMediaController extends Controller
         $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_INLINE);
 
         return $response;
+    }
+
+    /**
+     * ¿La canción sigue viva?
+     *
+     * Hay que mirar las eliminadas (`withTrashed`): el ámbito global de
+     * SoftDeletes filtraría justo las que buscamos.
+     */
+    private function songIsDeleted(int $songId): bool
+    {
+        return Song::withTrashed()
+            ->where('id', $songId)
+            ->whereNotNull('deleted_at')
+            ->exists();
     }
 
     private function decodePath(string $token): ?string

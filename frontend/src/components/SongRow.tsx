@@ -7,6 +7,7 @@ import { DownloadButton } from './DownloadButton'
 import { LikeButton } from './LikeButton'
 import { SongActions } from './SongActions'
 import { usePlayer } from '../context/PlayerContext'
+import { useToast } from '../context/ToastContext'
 import { cn, formatDuration } from '../lib/format'
 import type { Song } from '../types'
 
@@ -28,13 +29,27 @@ export function SongRow({
   rowProps,
 }: SongRowProps) {
   const { current, isPlaying, playQueue, togglePlay } = usePlayer()
+  const toast = useToast()
   const isCurrent = current?.id === song.id
   const isPlayingThis = isCurrent && isPlaying
-  const actionLabel = isPlayingThis
-    ? `Pausar ${song.title}`
-    : `Reproducir ${song.title}${song.artist_name ? ` de ${song.artist_name}` : ''}`
+
+  // Una canción eliminada se sigue viendo (puede estar en la playlist de otra
+  // persona), pero no se reproduce.
+  const unavailable = song.is_deleted
+
+  const actionLabel = unavailable
+    ? `${song.title} no está disponible`
+    : isPlayingThis
+      ? `Pausar ${song.title}`
+      : `Reproducir ${song.title}${song.artist_name ? ` de ${song.artist_name}` : ''}`
 
   const handlePlay = () => {
+    if (unavailable) {
+      toast.info(`«${song.title}» ya no está disponible.`)
+
+      return
+    }
+
     if (isCurrent) {
       togglePlay()
 
@@ -56,8 +71,9 @@ export function SongRow({
       <button
         type="button"
         onClick={handlePlay}
+        disabled={unavailable}
         aria-label={actionLabel}
-        className="relative md:hidden"
+        className="relative md:hidden disabled:cursor-not-allowed"
       >
         <Cover
           src={song.cover_url}
@@ -78,11 +94,14 @@ export function SongRow({
       <button
         type="button"
         onClick={handlePlay}
+        disabled={unavailable}
         aria-label={actionLabel}
-        className="relative hidden size-8 items-center justify-center rounded-lg md:flex"
+        className="relative hidden size-8 items-center justify-center rounded-lg md:flex disabled:cursor-not-allowed"
       >
         {isPlayingThis ? (
           <AudioLines className="text-accent-soft size-4" aria-hidden="true" />
+        ) : unavailable ? (
+          <span className="text-ink-600 text-xs">—</span>
         ) : (
           <span
             className={cn(
@@ -103,7 +122,12 @@ export function SongRow({
       </button>
 
       <div className="min-w-0">
-        <p className={cn('truncate text-sm font-medium', isCurrent ? 'text-accent-soft' : 'text-white')}>
+        <p
+          className={cn(
+            'truncate text-sm font-medium',
+            unavailable ? 'text-ink-500' : isCurrent ? 'text-accent-soft' : 'text-white',
+          )}
+        >
           {song.title}
         </p>
         <p className="text-ink-300 truncate text-sm">
@@ -118,7 +142,13 @@ export function SongRow({
           ) : (
             <span>{song.artist_name ?? 'Artista desconocido'}</span>
           )}
-          <span className="text-ink-400 md:hidden"> · {formatDuration(song.duration_ms)}</span>
+          {unavailable ? (
+            <span className="text-ink-500 ml-2 rounded-full border border-ink-600 px-2 py-0.5 text-xs">
+              No disponible
+            </span>
+          ) : (
+            <span className="text-ink-400 md:hidden"> · {formatDuration(song.duration_ms)}</span>
+          )}
         </p>
       </div>
 
@@ -145,9 +175,14 @@ export function SongRow({
       </p>
 
       <div className="flex items-center gap-0.5">
-        <LikeButton song={song} />
-        <DownloadButton song={song} />
-        <AddToPlaylistMenu song={song} />
+        {/* Una canción eliminada no se puede marcar ni descargar. */}
+        {unavailable ? null : (
+          <>
+            <LikeButton song={song} />
+            <DownloadButton song={song} />
+            <AddToPlaylistMenu song={song} />
+          </>
+        )}
         <SongActions song={song} />
         {extraActions}
       </div>

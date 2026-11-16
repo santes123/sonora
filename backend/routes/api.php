@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\SettingsController as AdminSettingsController;
+use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\AlbumController;
 use App\Http\Controllers\Api\V1\ArtistController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -9,6 +11,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\HistoryController;
 use App\Http\Controllers\Api\V1\OfflineController;
 use App\Http\Controllers\Api\V1\PlaylistController;
+use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\SongController;
 use App\Http\Controllers\Api\V1\SongLikeController;
 use App\Http\Controllers\Api\V1\StreamMediaController;
@@ -17,12 +20,19 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', HealthController::class)->name('health');
 
+    // Ajustes públicos: la interfaz necesita saber si el registro está
+    // abierto antes de poder iniciar sesión.
+    Route::get('/settings', SettingsController::class)->name('settings');
+
     // URL firmada: no requiere sesión (el HMAC es la capability).
     // `signed:relative` porque MediaStorage genera la URL relativa (misma
     // origen), evitando que un proxy cambie el host e invalide el HMAC.
-    Route::get('/media/{token}', StreamMediaController::class)
+    // El `{song}` opcional identifica la canción: permite rechazar el audio
+    // de una canción eliminada aunque se conserve una URL ya emitida.
+    Route::get('/media/{token}/{song?}', StreamMediaController::class)
         ->middleware('signed:relative')
         ->where('token', '[A-Za-z0-9_-]+')
+        ->where('song', '[0-9]+')
         ->name('media.stream');
 
     Route::middleware('throttle:auth')->group(function (): void {
@@ -46,6 +56,11 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/songs/{song}/cover', [SongController::class, 'updateCover'])
             ->name('songs.cover.store');
         Route::delete('/songs/{song}', [SongController::class, 'destroy'])->name('songs.destroy');
+        // Restaurar una canción eliminada: el borrado es lógico, así que
+        // volver a ponerla en el catálogo es inmediato.
+        Route::post('/songs/{song}/restore', [SongController::class, 'restore'])
+            ->withTrashed()
+            ->name('songs.restore');
         Route::post('/songs/{song}/like', [SongLikeController::class, 'store'])->name('songs.like');
         Route::delete('/songs/{song}/like', [SongLikeController::class, 'destroy'])->name('songs.unlike');
         Route::get('/me/favorites', [FavoritesController::class, 'index'])->name('me.favorites');
@@ -74,5 +89,14 @@ Route::prefix('v1')->group(function (): void {
         // Descarga offline: URLs firmadas en lote para guardar el audio en el
         // dispositivo. La capacidad es la propia URL firmada.
         Route::post('/offline/urls', [OfflineController::class, 'urls'])->name('offline.urls');
+    });
+
+    // Panel de administración: ajustes del sitio y alta de cuentas.
+    // El registro público está cerrado; aquí es donde nace una cuenta nueva.
+    Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function (): void {
+        Route::get('/settings', [AdminSettingsController::class, 'index'])->name('admin.settings.index');
+        Route::patch('/settings', [AdminSettingsController::class, 'update'])->name('admin.settings.update');
+        Route::get('/users', [AdminUserController::class, 'index'])->name('admin.users.index');
+        Route::post('/users', [AdminUserController::class, 'store'])->name('admin.users.store');
     });
 });

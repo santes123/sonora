@@ -20,7 +20,11 @@ class ListListeningHistoryAction
         return $user->listeningHistory()
             // Eager loading explícito: sin esto, serializar cada entrada
             // abriría una consulta por canción, artista, álbum y medio.
+            //
+            // `withTrashed`: lo que se escuchó no desaparece de la memoria
+            // porque la canción se borrara; se marca como no disponible.
             ->with(['song' => fn ($query) => $query
+                ->withTrashed()
                 ->with(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name'])
                 ->withIsLiked($user->id),
             ])

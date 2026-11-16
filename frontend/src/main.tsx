@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext'
 import { LikesProvider } from './context/LikesContext'
 import { OfflineProvider } from './context/OfflineContext'
 import { PlayerProvider } from './context/PlayerContext'
+import { SettingsProvider } from './context/SettingsContext'
 import { ToastProvider } from './context/ToastContext'
 import { ApiError } from './lib/api'
 import './index.css'
@@ -40,17 +41,19 @@ createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <AuthProvider>
-          <LikesProvider>
-            <OfflineProvider>
-              <PlayerProvider>
-                <BrowserRouter>
-                  <App />
-                </BrowserRouter>
-              </PlayerProvider>
-            </OfflineProvider>
-          </LikesProvider>
-        </AuthProvider>
+        <SettingsProvider>
+          <AuthProvider>
+            <LikesProvider>
+              <OfflineProvider>
+                <PlayerProvider>
+                  <BrowserRouter>
+                    <App />
+                  </BrowserRouter>
+                </PlayerProvider>
+              </OfflineProvider>
+            </LikesProvider>
+          </AuthProvider>
+        </SettingsProvider>
       </ToastProvider>
     </QueryClientProvider>
   </StrictMode>,

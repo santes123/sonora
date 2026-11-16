@@ -45,10 +45,28 @@ export interface Song {
   cover_url: string | null
   stream_url: string | null
   is_liked: boolean
+  /**
+   * La canción fue eliminada: se muestra, pero no se reproduce.
+   *
+   * Opcional porque las descargas offline guardadas antes de este cambio no
+   * lo traen: si falta, la canción se considera disponible.
+   */
+  is_deleted?: boolean
   artist?: Artist
   album?: Album
   uploader?: User
   created_at: string | null
+}
+
+/**
+ * Ajustes del sitio.
+ *
+ * `registration_enabled` decide si hay registro público; `allow_indexing`,
+ * si los motores de búsqueda pueden indexar el sitio.
+ */
+export interface SiteSettings {
+  registration_enabled: boolean
+  allow_indexing: boolean
 }
 
 /**

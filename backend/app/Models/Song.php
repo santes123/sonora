@@ -10,11 +10,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * Canción del catálogo compartido.
+ *
+ * El borrado es lógico (`deleted_at`): la canción desaparece del catálogo y
+ * deja de ser reproducible, pero la fila sobrevive para poder marcarla como
+ * "no disponible" en las playlists de otras personas y para poder restaurarla.
+ * Por eso las playlists cargan sus canciones con `withTrashed()`.
+ */
 class Song extends Model
 {
     /** @use HasFactory<SongFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'media_asset_id',
@@ -119,6 +128,18 @@ class Song extends Model
         ]);
 
         return $this;
+    }
+
+    /**
+     * ¿La canción está eliminada (borrado lógico)?
+     *
+     * Se usa cuando la fila viene cargada con `withTrashed()`: el ámbito
+     * global de SoftDeletes ya filtra las eliminadas, así que solo hay que
+     * mirarlo en las listas donde sí queremos mostrarlas.
+     */
+    public function isDeleted(): bool
+    {
+        return $this->deleted_at !== null;
     }
 
     /** @param Builder<Song> $query */

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../context/AuthContext'
+import { useSiteSettings } from '../context/SettingsContext'
 import { ApiError, firstError } from '../lib/api'
 
 interface LocationState {
@@ -11,6 +12,7 @@ interface LocationState {
 
 export function LoginPage() {
   const { login } = useAuth()
+  const { registrationEnabled } = useSiteSettings()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -55,12 +57,20 @@ export function LoginPage() {
       title="Inicia sesión"
       subtitle="Accede a tu biblioteca y sigue donde lo dejaste."
       footer={
-        <>
-          ¿Todavía no tienes cuenta?{' '}
-          <Link to="/register" className="text-accent-soft font-semibold hover:underline">
-            Crear una cuenta
-          </Link>
-        </>
+        // El enlace al registro solo aparece si está abierto: en un sitio
+        // privado no hay ningún menú público que invite a crear una cuenta.
+        registrationEnabled ? (
+          <>
+            ¿Todavía no tienes cuenta?{' '}
+            <Link to="/register" className="text-accent-soft font-semibold hover:underline">
+              Crear una cuenta
+            </Link>
+          </>
+        ) : (
+          <span className="text-ink-400">
+            El registro está cerrado. Pide al administrador que cree tu cuenta.
+          </span>
+        )
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>

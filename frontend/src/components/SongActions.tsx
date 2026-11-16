@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { Loader2, MoreVertical, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { api, firstError } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -29,7 +29,17 @@ export function SongActions({ song, onDeleted }: SongActionsProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
 
-  const canManage = Boolean(user && (user.role === 'admin' || song.uploader?.id === user.id))
+  const isAdmin = user?.role === 'admin'
+  const canManage = Boolean(user && (isAdmin || song.uploader?.id === user.id))
+  const unavailable = song.is_deleted
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['songs'] })
+    queryClient.invalidateQueries({ queryKey: ['playlists'] })
+    queryClient.invalidateQueries({ queryKey: ['home'] })
+    queryClient.invalidateQueries({ queryKey: ['history'] })
+    queryClient.invalidateQueries({ queryKey: ['favorites'] })
+  }
 
   useEffect(() => {
     if (!open) {
@@ -60,11 +70,7 @@ export function SongActions({ song, onDeleted }: SongActionsProps) {
   const remove = useMutation({
     mutationFn: () => api.deleteSong(song.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['songs'] })
-      queryClient.invalidateQueries({ queryKey: ['playlists'] })
-      queryClient.invalidateQueries({ queryKey: ['home'] })
-      queryClient.invalidateQueries({ queryKey: ['history'] })
-      queryClient.invalidateQueries({ queryKey: ['favorites'] })
+      invalidate()
       toast.success('Canción eliminada.')
       setOpen(false)
       onDeleted?.()
@@ -72,7 +78,18 @@ export function SongActions({ song, onDeleted }: SongActionsProps) {
     onError: (error) => toast.error(firstError(error)),
   })
 
-  if (!canManage) {
+  const restore = useMutation({
+    mutationFn: () => api.restoreSong(song.id),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Canción restaurada.')
+      setOpen(false)
+    },
+    onError: (error) => toast.error(firstError(error)),
+  })
+
+  // Una canción eliminada solo la restaura el administrador.
+  if (!canManage && !(unavailable && isAdmin)) {
     return null
   }
 
@@ -99,59 +116,80 @@ export function SongActions({ song, onDeleted }: SongActionsProps) {
             aria-label={`Acciones de ${song.title}`}
             className="border-ink-600 bg-ink-850 absolute right-0 bottom-full z-50 mb-2 w-56 rounded-xl border p-1.5 shadow-2xl"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                setEditing(true)
-              }}
-              className="text-ink-200 hover:bg-ink-700 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors"
-            >
-              <Pencil className="size-4 shrink-0" aria-hidden="true" />
-              Editar
-            </button>
-
-            {confirmingDelete ? (
-              <div className="rounded-lg px-2 py-2">
-                <p className="text-ink-200 text-xs font-medium">
-                  ¿Eliminar «{song.title}»? No se puede deshacer.
-                </p>
-
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => remove.mutate()}
-                    disabled={remove.isPending}
-                    className="text-red-300 hover:text-red-200 inline-flex items-center gap-1 text-xs font-semibold transition-colors disabled:opacity-50"
-                  >
-                    {remove.isPending ? (
-                      <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-                    ) : null}
-                    Sí, eliminar
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(false)}
-                    className="text-ink-400 hover:text-ink-100 text-xs transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : (
+            {unavailable ? (
+              // Una canción eliminada solo se puede restaurar (y solo el
+              // administrador): el resto de acciones no aplican.
               <button
                 type="button"
                 role="menuitem"
-                onClick={() => setConfirmingDelete(true)}
-                className={cn(
-                  'text-ink-200 hover:bg-ink-700 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors',
-                )}
+                onClick={() => restore.mutate()}
+                disabled={restore.isPending}
+                className="text-ink-200 hover:bg-ink-700 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors disabled:opacity-50"
               >
-                <Trash2 className="size-4 shrink-0" aria-hidden="true" />
-                Eliminar
+                {restore.isPending ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RotateCcw className="size-4 shrink-0" aria-hidden="true" />
+                )}
+                Restaurar
               </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false)
+                    setEditing(true)
+                  }}
+                  className="text-ink-200 hover:bg-ink-700 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors"
+                >
+                  <Pencil className="size-4 shrink-0" aria-hidden="true" />
+                  Editar
+                </button>
+
+                {confirmingDelete ? (
+                  <div className="rounded-lg px-2 py-2">
+                    <p className="text-ink-200 text-xs font-medium">
+                      ¿Eliminar «{song.title}»? No se puede deshacer.
+                    </p>
+
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => remove.mutate()}
+                        disabled={remove.isPending}
+                        className="text-red-300 hover:text-red-200 inline-flex items-center gap-1 text-xs font-semibold transition-colors disabled:opacity-50"
+                      >
+                        {remove.isPending ? (
+                          <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                        ) : null}
+                        Sí, eliminar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDelete(false)}
+                        className="text-ink-400 hover:text-ink-100 text-xs transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => setConfirmingDelete(true)}
+                    className={cn(
+                      'text-ink-200 hover:bg-ink-700 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors',
+                    )}
+                  >
+                    <Trash2 className="size-4 shrink-0" aria-hidden="true" />
+                    Eliminar
+                  </button>
+                )}
+              </>
             )}
           </div>
         ) : null}

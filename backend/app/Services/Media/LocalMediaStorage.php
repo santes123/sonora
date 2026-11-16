@@ -103,16 +103,25 @@ final class LocalMediaStorage implements MediaStorage
         return $prefix.'/'.ltrim($path, '/');
     }
 
-    public function temporaryUrl(string $path, ?CarbonInterface $expiresAt = null): string
+    public function temporaryUrl(string $path, ?CarbonInterface $expiresAt = null, ?int $songId = null): string
     {
         $expiresAt ??= now()->addMinutes((int) config('media.url_ttl_minutes', 360));
 
         $token = rtrim(strtr(base64_encode($path), '+/', '-_'), '=');
 
+        $parameters = ['token' => $token];
+
+        // La canción viaja dentro de la URL firmada: al eliminarla, el
+        // servidor puede rechazar las URLs ya emitidas sin tener que
+        // consultar el medio (que no lleva índice por ruta).
+        if ($songId !== null) {
+            $parameters['song'] = $songId;
+        }
+
         return URL::temporarySignedRoute(
             'media.stream',
             $expiresAt,
-            ['token' => $token],
+            $parameters,
             absolute: false,
         );
     }

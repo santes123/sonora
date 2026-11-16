@@ -22,4 +22,14 @@ class SongPolicy
     {
         return $user->isAdmin() || $song->uploader_id === $user->id;
     }
+
+    /**
+     * Restaurar una canción eliminada es una decisión del administrador:
+     * el uploader que la borró puede querer hacerlo, pero el sitio es
+     * compartido y el criterio se mantiene uniforme.
+     */
+    public function restore(User $user, Song $song): bool
+    {
+        return $user->isAdmin();
+    }
 }

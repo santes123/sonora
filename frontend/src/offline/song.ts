@@ -23,6 +23,9 @@ export function songFromDownload(download: DownloadSummary): Song {
     cover_url: download.coverCacheKey ?? download.coverUrl,
     stream_url: download.cacheKey,
     is_liked: false,
+    // Lo que está descargado sigue disponible aunque la canción se elimine
+    // del catálogo: el audio ya está en el dispositivo.
+    is_deleted: false,
     created_at: null,
   }
 }

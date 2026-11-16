@@ -1,2 +1,7 @@
+# Sitio privado: se prohíbe el rastreo por completo.
+#
+# Este archivo es la copia estática de respaldo. La versión que manda es la
+# que genera la aplicación en /robots.txt (respeta el ajuste
+# `allow_indexing` del panel de administración), servida por nginx.
 User-agent: *
-Disallow:
+Disallow: /

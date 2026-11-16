@@ -29,7 +29,10 @@ class MediaGcCommand extends Command
         $deleted = 0;
 
         MediaAsset::query()
-            ->whereDoesntHave('songs')
+            // `withTrashed` en la relación: una canción eliminada lógicamente
+            // sigue referenciando su medio, así que el binario NO es huérfano
+            // (es lo que permite restaurarla más adelante).
+            ->whereDoesntHave('songs', fn ($query) => $query->withTrashed())
             ->where('created_at', '<', now()->subDay())
             ->chunkById(100, function ($assets) use ($storage, $dryRun, &$deleted): void {
                 foreach ($assets as $asset) {
@@ -49,7 +52,7 @@ class MediaGcCommand extends Command
                 }
             });
 
-        $referenced = Song::query()->whereNotNull('cover_path')->pluck('cover_path')
+        $referenced = Song::withTrashed()->whereNotNull('cover_path')->pluck('cover_path')
             ->merge(Album::query()->whereNotNull('cover_path')->pluck('cover_path'))
             ->merge(Playlist::withTrashed()->whereNotNull('cover_path')->pluck('cover_path'))
             ->unique()

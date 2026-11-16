@@ -2,6 +2,7 @@ import { Pause, Play } from 'lucide-react'
 import { Cover } from './Cover'
 import { SongActions } from './SongActions'
 import { usePlayer } from '../context/PlayerContext'
+import { useToast } from '../context/ToastContext'
 import { cn } from '../lib/format'
 import type { Song } from '../types'
 
@@ -21,10 +22,20 @@ interface SongCardProps {
  */
 export function SongCard({ song, queue, index, className }: SongCardProps) {
   const { current, isPlaying, playQueue, togglePlay } = usePlayer()
+  const toast = useToast()
   const isCurrent = current?.id === song.id
   const isPlayingThis = isCurrent && isPlaying
 
+    // Una canción eliminada se sigue viendo, pero no se reproduce.
+  const unavailable = song.is_deleted
+
   const handlePlay = () => {
+    if (unavailable) {
+      toast.info(`«${song.title}» ya no está disponible.`)
+
+      return
+    }
+
     if (isCurrent) {
       togglePlay()
 
@@ -47,12 +58,15 @@ export function SongCard({ song, queue, index, className }: SongCardProps) {
         <button
           type="button"
           onClick={handlePlay}
+          disabled={unavailable}
           aria-label={
-            isPlayingThis
-              ? `Pausar ${song.title}`
-              : `Reproducir ${song.title}${song.artist_name ? ` de ${song.artist_name}` : ''}`
+            unavailable
+              ? `${song.title} no está disponible`
+              : isPlayingThis
+                ? `Pausar ${song.title}`
+                : `Reproducir ${song.title}${song.artist_name ? ` de ${song.artist_name}` : ''}`
           }
-          className="bg-accent hover:bg-accent-strong absolute right-2 bottom-2 flex size-10 items-center justify-center rounded-full text-white shadow-lg transition-colors"
+          className="bg-accent hover:bg-accent-strong absolute right-2 bottom-2 flex size-10 items-center justify-center rounded-full text-white shadow-lg transition-colors disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-ink-400"
         >
           {isPlayingThis ? (
             <Pause className="size-4 fill-current" aria-hidden="true" />
@@ -66,9 +80,11 @@ export function SongCard({ song, queue, index, className }: SongCardProps) {
         </div>
       </div>
 
-      <p className="mt-2 truncate text-sm font-medium text-white">{song.title}</p>
+      <p className={cn('mt-2 truncate text-sm font-medium', unavailable ? 'text-ink-500' : 'text-white')}>
+        {song.title}
+      </p>
       <p className="text-ink-300 truncate text-xs">
-        {song.artist_name ?? 'Artista desconocido'}
+        {unavailable ? 'No disponible' : (song.artist_name ?? 'Artista desconocido')}
       </p>
     </div>
   )

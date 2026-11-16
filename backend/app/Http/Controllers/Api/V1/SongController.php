@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Songs\DeleteSongAction;
+use App\Actions\Songs\RestoreSongAction;
 use App\Actions\Songs\UpdateSongAction;
 use App\Actions\Songs\UpdateSongCoverAction;
 use App\Actions\Songs\UploadSongAction;
@@ -149,5 +150,22 @@ class SongController extends Controller
         $action->execute($song);
 
         return response()->noContent();
+    }
+
+    /**
+     * Restaura una canción eliminada.
+     *
+     * El borrado es lógico: la fila y el fichero de audio se conservan, así
+     * que volver a ponerla en el catálogo es inmediato.
+     */
+    public function restore(Song $song, RestoreSongAction $action): SongResource
+    {
+        $this->authorize('restore', $song);
+
+        $restored = $action->execute($song);
+
+        return new SongResource(
+            $restored->load(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name']),
+        );
     }
 }

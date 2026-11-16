@@ -139,7 +139,12 @@ class PlaylistController extends Controller
             'user:id,name',
             // El estado "me gusta" es por usuario: sin `withIsLiked` las
             // canciones de la playlist saldrían siempre como no favoritas.
+            //
+            // `withTrashed`: las canciones eliminadas siguen en la playlist
+            // (no se quita la fila) y se muestran marcadas como "no
+            // disponibles" en lugar de desaparecer sin aviso.
             'items.song' => fn ($query) => $query
+                ->withTrashed()
                 ->with(['artist', 'album', 'mediaAsset:id,path', 'uploader:id,name'])
                 ->withIsLiked($userId),
         ]);

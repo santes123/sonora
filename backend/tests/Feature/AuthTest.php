@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\Settings\SiteSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -12,6 +13,10 @@ class AuthTest extends TestCase
 
     public function test_user_can_register(): void
     {
+        // El registro público está cerrado por defecto (sitio privado): para
+        // esta prueba se abre explícitamente.
+        app(SiteSettings::class)->update([SiteSettings::REGISTRATION_ENABLED => true]);
+
         $response = $this->withHeader('Origin', 'http://localhost')
             ->postJson('/api/v1/auth/register', [
                 'name' => 'Nueva Persona',
@@ -27,8 +32,25 @@ class AuthTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'nueva@example.com']);
     }
 
+    public function test_registration_is_closed_by_default(): void
+    {
+        $response = $this->withHeader('Origin', 'http://localhost')
+            ->postJson('/api/v1/auth/register', [
+                'name' => 'Colada',
+                'email' => 'colada@example.com',
+                'password' => 'password123',
+                'password_confirmation' => 'password123',
+            ]);
+
+        $response->assertForbidden();
+
+        $this->assertDatabaseMissing('users', ['email' => 'colada@example.com']);
+    }
+
     public function test_register_validates_unique_email(): void
     {
+        app(SiteSettings::class)->update([SiteSettings::REGISTRATION_ENABLED => true]);
+
         User::factory()->create(['email' => 'ocupado@example.com']);
 
         $this->withHeader('Origin', 'http://localhost')

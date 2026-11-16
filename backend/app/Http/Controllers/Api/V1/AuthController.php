@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\Settings\SiteSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -15,8 +16,22 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function register(RegisterRequest $request): JsonResponse
+    /**
+     * Alta de cuenta.
+     *
+     * El registro público está cerrado por defecto (es un sitio privado). Si
+     * el administrador lo abre desde el panel, la casilla de la interfaz
+     * reaparece; si no, este endpoint responde 403 y no hay ningún menú
+     * público que lo use.
+     */
+    public function register(RegisterRequest $request, SiteSettings $settings): JsonResponse
     {
+        abort_unless(
+            $settings->registrationEnabled(),
+            403,
+            'El registro está cerrado. Pide al administrador que cree tu cuenta.',
+        );
+
         $user = User::query()->create([
             'name' => $request->string('name')->toString(),
             'email' => mb_strtolower($request->string('email')->toString()),

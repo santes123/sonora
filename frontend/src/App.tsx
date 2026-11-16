@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout'
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute'
+import { AdminPage } from './pages/AdminPage'
 import { AlbumPage } from './pages/AlbumPage'
 import { ArtistPage } from './pages/ArtistPage'
 import { DownloadsPage } from './pages/DownloadsPage'
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/albums/:id" element={<AlbumPage />} />
           <Route path="/artists/:id" element={<ArtistPage />} />
           <Route path="/upload" element={<UploadPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

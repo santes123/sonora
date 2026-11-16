@@ -20,9 +20,16 @@ class SongResource extends JsonResource
         $coverPath = $this->cover_path
             ?? ($this->relationLoaded('album') ? $this->album?->cover_path : null);
 
-        $streamUrl = $this->relationLoaded('mediaAsset') && $this->mediaAsset !== null
-            ? $this->mediaUrl($this->mediaAsset->path)
-            : null;
+        // Una canción eliminada sigue en la fila (puede estar en la playlist de
+        // otra persona) pero no es reproducible: se marca y se entrega sin
+        // URL de streaming.
+        $isDeleted = $this->deleted_at !== null;
+
+        $streamUrl = ! $isDeleted
+            && $this->relationLoaded('mediaAsset')
+            && $this->mediaAsset !== null
+                ? $this->mediaUrl($this->mediaAsset->path, $this->id)
+                : null;
 
         return [
             'id' => $this->id,
@@ -35,6 +42,7 @@ class SongResource extends JsonResource
             'genre' => $this->genre,
             'duration_ms' => $this->duration_ms,
             'is_liked' => (bool) ($this->is_liked ?? false),
+            'is_deleted' => $isDeleted,
             'cover_url' => $this->mediaUrl($coverPath),
             'stream_url' => $streamUrl,
             'artist' => $this->whenLoaded('artist', fn () => new ArtistResource($this->artist)),

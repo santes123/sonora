@@ -22,7 +22,9 @@ final class DeleteOrphanedMediaAssetJob implements ShouldQueue
 
     public function handle(MediaStorage $storage): void
     {
-        if (Song::query()->where('media_asset_id', $this->mediaAssetId)->exists()) {
+        // `withTrashed`: una canción eliminada lógicamente sigue referenciando
+        // su medio (para poder restaurarla), así que no está huérfano.
+        if (Song::withTrashed()->where('media_asset_id', $this->mediaAssetId)->exists()) {
             return;
         }
 

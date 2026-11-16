@@ -5,10 +5,12 @@ import type {
   HistoryEntry,
   Paginated,
   Playlist,
+  SiteSettings,
   Song,
   SongQuery,
   SongUpdate,
   User,
+  UserRole,
 } from '../types'
 
 const API = '/api/v1'
@@ -176,10 +178,43 @@ export const api = {
     }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
 
+  /**
+   * Ajustes públicos del sitio.
+   *
+   * Se consultan sin sesión: la interfaz necesita saber si el registro está
+   * abierto antes de poder iniciar sesión.
+   */
+  settings: () => request<SiteSettings>('/settings'),
+
+  /** Ajustes del sitio (panel de administración). */
+  adminSettings: () => request<SiteSettings>('/admin/settings'),
+  updateAdminSettings: (changes: Partial<SiteSettings>) =>
+    request<SiteSettings>('/admin/settings', { method: 'PATCH', body: changes }),
+
+  /** Cuentas del sitio (panel de administración). */
+  adminUsers: (perPage = 50) =>
+    request<Paginated<User>>(`/admin/users${toQueryString({ per_page: perPage })}`),
+  createUser: (payload: {
+    name: string
+    email: string
+    password: string
+    password_confirmation: string
+    role?: UserRole
+  }) =>
+    resource<User>('/admin/users', {
+      method: 'POST',
+      body: payload,
+    }),
+
   songs: (query: SongQuery = {}, signal?: AbortSignal) =>
     request<Paginated<Song>>(`/songs${toQueryString(query)}`, { signal }),
   song: (id: number) => resource<Song>(`/songs/${id}`),
   deleteSong: (id: number) => request<void>(`/songs/${id}`, { method: 'DELETE' }),
+
+  /**
+   * Restaura una canción eliminada (solo administradores).
+   */
+  restoreSong: (id: number) => resource<Song>(`/songs/${id}/restore`, { method: 'POST' }),
 
   likeSong: (id: number) => resource<Song>(`/songs/${id}/like`, { method: 'POST' }),
   unlikeSong: (id: number) => resource<Song>(`/songs/${id}/like`, { method: 'DELETE' }),

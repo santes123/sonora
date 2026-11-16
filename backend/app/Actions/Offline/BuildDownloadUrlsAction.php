@@ -46,7 +46,10 @@ class BuildDownloadUrlsAction
 
             $urls[] = [
                 'song_id' => (int) $song->id,
-                'url' => $this->storage->temporaryUrl($song->mediaAsset->path),
+                // La canción viaja en la URL firmada: si se elimina más
+                // tarde, el servidor rechaza el audio aunque la URL siga
+                // siendo válida.
+                'url' => $this->storage->temporaryUrl($song->mediaAsset->path, songId: (int) $song->id),
                 'bytes' => (int) ($song->mediaAsset->size_bytes ?? 0),
             ];
         }

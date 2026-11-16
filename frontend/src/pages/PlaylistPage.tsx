@@ -66,7 +66,7 @@ export function PlaylistPage() {
 
   const handleDownloadPlaylist = async () => {
     try {
-      await downloadPlaylist(songs, playlistId)
+      await downloadPlaylist(playableSongs, playlistId)
       toast.success('Playlist descargada.')
     } catch (error) {
       toast.error(firstError(error))
@@ -207,6 +207,11 @@ export function PlaylistPage() {
     .map((item) => item.song)
     .filter((song): song is Song => song != null)
 
+  // Las canciones eliminadas se muestran (para que se vea que estaban ahí),
+  // pero no se pueden reproducir ni descargar.
+  const playableSongs = songs.filter((song) => !song.is_deleted)
+  const unavailableCount = songs.length - playableSongs.length
+
   return (
     <div className="space-y-8">
       <Link to="/library" className="text-ink-300 hover:text-ink-100 inline-flex items-center gap-2 text-sm">
@@ -326,6 +331,9 @@ export function PlaylistPage() {
               <p className="text-ink-300 mt-3 text-sm">
                 {playlist.user ? `${playlist.user.name} · ` : ''}
                 {pluralize(playlist.songs_count, 'canción', 'canciones')}
+                {unavailableCount > 0 ? (
+                  <span className="text-ink-400"> · {unavailableCount} no disponible</span>
+                ) : null}
                 {playlist.duration_ms > 0 ? ` · ${formatTotalDuration(playlist.duration_ms)}` : ''}
                 {playlist.updated_at ? ` · actualizada el ${formatDate(playlist.updated_at)}` : ''}
               </p>
@@ -333,8 +341,8 @@ export function PlaylistPage() {
               <div className="mt-5 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => playQueue(songs, 0)}
-                  disabled={songs.length === 0}
+                  onClick={() => playQueue(playableSongs, 0)}
+                  disabled={playableSongs.length === 0}
                   className="btn-primary"
                 >
                   <Play className="size-4 fill-current" aria-hidden="true" />
@@ -349,7 +357,7 @@ export function PlaylistPage() {
                 <button
                   type="button"
                   onClick={handleDownloadPlaylist}
-                  disabled={songs.length === 0 || isDownloadingPlaylist}
+                  disabled={playableSongs.length === 0 || isDownloadingPlaylist}
                   className="btn-outline"
                   title="Descargar esta playlist para usarla sin conexión"
                 >

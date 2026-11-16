@@ -96,14 +96,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playQueue = useCallback(
     (songs: Song[], startIndex = 0) => {
-      if (songs.length === 0) {
+      // Las canciones eliminadas no se reproducen: se quedan en la lista
+      // (para que se vea que existen) pero el reproductor las salta.
+      const playable = songs.filter((song) => !song.is_deleted)
+
+      if (playable.length === 0) {
+        toast.info('No hay canciones disponibles para reproducir.')
+
         return
       }
 
-      const start = Math.min(Math.max(startIndex, 0), songs.length - 1)
-      const indexes = songs.map((_, index) => index)
+      const requested = songs[startIndex]
+      const start =
+        requested && !requested.is_deleted ? playable.indexOf(requested) : 0
 
-      setQueue(songs)
+      const indexes = playable.map((_, index) => index)
+
+      setQueue(playable)
 
       if (shuffle) {
         const rest = indexes.filter((index) => index !== start)
@@ -116,11 +125,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       setIsPlaying(true)
     },
-    [shuffle],
+    [shuffle, toast],
   )
 
   const playSong = useCallback(
     (song: Song) => {
+      if (song.is_deleted) {
+        toast.info(`«${song.title}» ya no está disponible.`)
+
+        return
+      }
+
       if (current?.id === song.id) {
         setIsPlaying((playing) => !playing)
 
@@ -129,7 +144,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       playQueue([song])
     },
-    [current, playQueue],
+    [current, playQueue, toast],
   )
 
   const togglePlay = useCallback(() => {
@@ -224,6 +239,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const addToQueue = useCallback(
     (song: Song) => {
+      if (song.is_deleted) {
+        return
+      }
+
       if (queue.length === 0) {
         playQueue([song])
 

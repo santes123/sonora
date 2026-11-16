@@ -44,6 +44,9 @@ interface MediaStorage
 
     /**
      * URL firmada y temporal para leer el archivo.
+     *
+     * `$songId` es opcional: si se indica, se incluye en la URL firmada para
+     * que el servidor pueda comprobar el estado de la canción al servirla.
      */
-    public function temporaryUrl(string $path, ?CarbonInterface $expiresAt = null): string;
+    public function temporaryUrl(string $path, ?CarbonInterface $expiresAt = null, ?int $songId = null): string;
 }

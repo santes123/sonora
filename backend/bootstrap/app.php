@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\BlockSearchEngines;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +20,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
         $middleware->throttleApi();
         $middleware->api(append: [AssignRequestId::class]);
+
+        // Rutas de administración: solo para administradores.
+        $middleware->alias(['admin' => EnsureUserIsAdmin::class]);
+
+        // Sitio privado: mientras el administrador no active la indexación,
+        // todas las respuestas llevan `X-Robots-Tag: noindex, nofollow`.
+        $middleware->append(BlockSearchEngines::class);
 
         // El único que alcanza PHP-FPM es nuestro propio nginx (el del host
         // o el contenedor `web`), que añade X-Forwarded-Proto y

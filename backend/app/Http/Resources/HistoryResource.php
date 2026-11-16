@@ -22,7 +22,7 @@ class HistoryResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $song = (new SongResource($this->song))->resolve($request);
+        $song = (new SongResource($this->song))->resolve($request) ?? [];
 
         return [
             ...$song,

@@ -52,15 +52,30 @@ const song: Song = {
   created_at: null,
 }
 
+const deletedSong: Song = {
+  ...song,
+  id: 8,
+  title: 'Canción Retirada',
+  is_deleted: true,
+  stream_url: null,
+}
+
 function Harness() {
-  const { playSong, current } = usePlayer()
+  const { playSong, playQueue, current, queue } = usePlayer()
 
   return (
     <div>
       <button type="button" onClick={() => playSong(song)}>
         Reproducir
       </button>
+      <button type="button" onClick={() => playSong(deletedSong)}>
+        Reproducir eliminada
+      </button>
+      <button type="button" onClick={() => playQueue([deletedSong, song])}>
+        Reproducir cola
+      </button>
       <span data-testid="current">{current?.title ?? '—'}</span>
+      <span data-testid="queue">{queue.map((item) => item.title).join(',')}</span>
     </div>
   )
 }
@@ -165,5 +180,28 @@ describe('PlayerContext', () => {
     })
 
     expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('no reproduce una canción eliminada y avisa de que no está disponible', async () => {
+    renderPlayer()
+
+    act(() => {
+      screen.getByRole('button', { name: 'Reproducir eliminada' }).click()
+    })
+
+    expect(screen.getByTestId('current')).toHaveTextContent('—')
+    expect(toastInfo).toHaveBeenCalledWith('«Canción Retirada» ya no está disponible.')
+  })
+
+  it('salta las canciones eliminadas de la cola', async () => {
+    renderPlayer()
+
+    act(() => {
+      screen.getByRole('button', { name: 'Reproducir cola' }).click()
+    })
+
+    await waitFor(() => expect(screen.getByTestId('current')).toHaveTextContent('Luz de Verano'))
+    expect(screen.getByTestId('queue')).toHaveTextContent('Luz de Verano')
+    expect(screen.getByTestId('queue')).not.toHaveTextContent('Canción Retirada')
   })
 })

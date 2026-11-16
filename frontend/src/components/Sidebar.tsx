@@ -8,6 +8,7 @@ import {
   ListMusic,
   LogOut,
   Search,
+  Settings,
   Upload,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -75,6 +76,23 @@ export function Sidebar() {
             ) : null}
           </NavLink>
         ))}
+
+        {/* El panel de administración solo existe para el administrador: es
+            donde se cambian los ajustes del sitio y se dan de alta cuentas. */}
+        {user?.role === 'admin' ? (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive ? 'bg-ink-800 text-white' : 'text-ink-300 hover:bg-ink-800/60 hover:text-white',
+              )
+            }
+          >
+            <Settings className="size-5" aria-hidden="true" />
+            Administración
+          </NavLink>
+        ) : null}
       </nav>
 
       <div className="mt-8 flex min-h-0 flex-1 flex-col">

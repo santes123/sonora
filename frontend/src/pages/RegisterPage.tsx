@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, Loader2, Lock } from 'lucide-react'
 import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../context/AuthContext'
+import { useSiteSettings } from '../context/SettingsContext'
 import { ApiError, firstError } from '../lib/api'
 
 export function RegisterPage() {
   const { register } = useAuth()
+  const { registrationEnabled } = useSiteSettings()
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -51,6 +53,36 @@ export function RegisterPage() {
         {fieldErrors[field]}
       </p>
     ) : null
+
+  // El registro público está cerrado: no hay formulario. El administrador
+  // crea las cuentas desde el panel de administración.
+  if (!registrationEnabled) {
+    return (
+      <AuthShell
+        title="Registro cerrado"
+        subtitle="Este sitio es privado y no admite cuentas nuevas."
+        footer={
+          <>
+            ¿Ya tienes cuenta?{' '}
+            <Link to="/login" className="text-accent-soft font-semibold hover:underline">
+              Iniciar sesión
+            </Link>
+          </>
+        }
+      >
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-ink-700 bg-ink-900/60 px-4 py-4 text-sm text-ink-200"
+        >
+          <Lock className="mt-0.5 size-4 shrink-0 text-ink-400" aria-hidden="true" />
+          <p>
+            Para entrar, el administrador tiene que dar de alta tu cuenta. Si necesitas una,
+            pídele que la cree desde el panel de administración.
+          </p>
+        </div>
+      </AuthShell>
+    )
+  }
 
   return (
     <AuthShell

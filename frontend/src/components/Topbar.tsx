@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { AudioLines, Search, Upload, WifiOff } from 'lucide-react'
+import { AudioLines, Search, Settings, Upload, WifiOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useOffline } from '../context/OfflineContext'
 
@@ -87,6 +87,14 @@ export function Topbar() {
           <Link to="/upload" className="icon-btn sm:hidden" aria-label="Subir música">
             <Upload className="size-5" aria-hidden="true" />
           </Link>
+
+          {/* Acceso al panel de administración (ajustes y alta de cuentas).
+              Solo el administrador lo ve. */}
+          {user?.role === 'admin' ? (
+            <Link to="/admin" className="icon-btn" aria-label="Administración" title="Administración">
+              <Settings className="size-5" aria-hidden="true" />
+            </Link>
+          ) : null}
 
           {user ? (
             <span
