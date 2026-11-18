@@ -3,54 +3,68 @@
 # Despliegue de Sonora en un Ubuntu Server con Docker.
 #
 # Script único: comprueba el sistema, prepara las carpetas, despliega el
-# código, construye las imágenes, levanta el stack, instala nginx con TLS,
-# programa las tareas y verifica que todo responde.
+# código, construye las imágenes, levanta el stack, instala nginx, publica la
+# SPA, programa las tareas y verifica que todo responde.
+#
+# TLS: el certificado ya existe en el servidor y se renueva solo. Este script
+# NO lanza certbot: comprueba que el certificado esté en su sitio y lo usa.
 #
 # Uso:
-#   sudo ./deploy/deploy.sh --domain music.antoniogmportfolio.online --email tu@email.com
+#   sudo ./deploy/deploy.sh --repo https://github.com/TU_USUARIO/sonora.git
 #
 # Opciones:
-#   --domain DOMINIO     dominio público (por defecto music.antoniogmportfolio.online)
-#   --email CORREO       correo de Let's Encrypt (obligatorio para el TLS)
 #   --repo URL           repositorio git a desplegar (usa el actual si se omite)
+#   --repo-token TOKEN   token de acceso para repositorios privados
 #   --branch RAMA        rama a desplegar (por defecto main)
+#   --domain DOMINIO     dominio público (por defecto music.antoniogmportfolio.online)
+#   --web-root RUTA      raíz web de nginx (por defecto la del panel)
+#   --log-dir RUTA       directorio de logs de nginx (por defecto el del panel)
+#   --media-dir RUTA     directorio de medios privados (por defecto /srv/sonora/media)
+#   --deploy-dir RUTA    directorio de trabajo (por defecto /srv/sonora)
 #   --app-key CLAVE      APP_KEY de Laravel (si no se indica, se genera)
 #   --db-password CLAVE  contraseña de MariaDB (si no se indica, se genera)
-#   --skip-tls           no emitir certificado (para probar antes del DNS)
+#   --no-adminer         no instalar el bloque de Adminer en nginx
 #   --skip-build         no reconstruir las imágenes
 #   --skip-cron          no instalar las tareas programadas
 #
-# Variables de entorno alternativas: DOMINIO, CORREO, REPO, RAMA, APP_KEY,
-# DB_PASSWORD, DEPLOY_DIR (por defecto /srv/sonora).
+# Variables de entorno alternativas: DOMINIO, REPO, REPO_TOKEN, RAMA, APP_KEY,
+# DB_PASSWORD, DEPLOY_DIR, WEB_ROOT, LOG_DIR, MEDIA_DIR.
 #
 set -euo pipefail
 
 # --- Valores por defecto ----------------------------------------------------
 DOMINIO="${DOMINIO:-music.antoniogmportfolio.online}"
-CORREO="${CORREO:-}"
 REPO="${REPO:-}"
+REPO_TOKEN="${REPO_TOKEN:-}"
 RAMA="${RAMA:-main}"
 DEPLOY_DIR="${DEPLOY_DIR:-/srv/sonora}"
+WEB_ROOT="${WEB_ROOT:-/var/www/site-music-antoniogmport-5de994/htdocs}"
+LOG_DIR="${LOG_DIR:-/var/www/site-music-antoniogmport-5de994/logs}"
+MEDIA_DIR="${MEDIA_DIR:-$DEPLOY_DIR/media}"
 APP_KEY="${APP_KEY:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
-SKIP_TLS=0
 SKIP_BUILD=0
 SKIP_CRON=0
+WITH_ADMINER=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --domain) DOMINIO="$2"; shift 2 ;;
-        --email) CORREO="$2"; shift 2 ;;
         --repo) REPO="$2"; shift 2 ;;
+        --repo-token) REPO_TOKEN="$2"; shift 2 ;;
         --branch) RAMA="$2"; shift 2 ;;
+        --web-root) WEB_ROOT="$2"; shift 2 ;;
+        --log-dir) LOG_DIR="$2"; shift 2 ;;
+        --media-dir) MEDIA_DIR="$2"; shift 2 ;;
+        --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
         --app-key) APP_KEY="$2"; shift 2 ;;
         --db-password) DB_PASSWORD="$2"; shift 2 ;;
-        --skip-tls) SKIP_TLS=1; shift ;;
+        --no-adminer) WITH_ADMINER=0; shift ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --skip-cron) SKIP_CRON=1; shift ;;
-        -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
         *) echo "Opción desconocida: $1" >&2; exit 1 ;;
     esac
 done
@@ -70,9 +84,6 @@ docker compose version >/dev/null 2>&1 || die "Falta Docker Compose v2."
 command -v nginx >/dev/null 2>&1 || die "Falta nginx. Instálalo con: apt install -y nginx"
 command -v git >/dev/null 2>&1 || die "Falta git."
 
-docker compose version >/dev/null 2>&1 || true
-ok "Docker $(docker version --format '{{.Server.Version}}'), nginx y git disponibles."
-
 if ! docker info >/dev/null 2>&1; then
     warn "El usuario actual no está en el grupo docker; se usará sudo."
     DOCKER="sudo docker"
@@ -80,11 +91,22 @@ else
     DOCKER="docker"
 fi
 
-# --- 2. Estructura de carpetas ----------------------------------------------
-log "Preparando $DEPLOY_DIR"
+ok "Docker $(docker version --format '{{.Server.Version}}'), nginx $(nginx -v 2>&1 | sed 's|.*nginx/||') y git disponibles."
 
-mkdir -p "$DEPLOY_DIR"/{media,web,backups,deploy}
-chown -R "$(id -u):$(id -g)" "$DEPLOY_DIR" 2>/dev/null || true
+# --- 2. Estructura de carpetas ----------------------------------------------
+log "Preparando $DEPLOY_DIR, $WEB_ROOT y $LOG_DIR"
+
+mkdir -p "$DEPLOY_DIR"/{media,backups,deploy}
+mkdir -p "$WEB_ROOT" "$LOG_DIR"
+mkdir -p "$WEB_ROOT/.well-known/acme-challenge"
+
+# nginx corre como www-data: tiene que poder leer la SPA y los medios.
+if id -u www-data >/dev/null 2>&1; then
+    chown -R www-data:www-data "$WEB_ROOT" "$LOG_DIR" 2>/dev/null || true
+fi
+chmod 755 "$DEPLOY_DIR" "$MEDIA_DIR" "$WEB_ROOT" "$LOG_DIR" 2>/dev/null || true
+chmod -R a+rX "$MEDIA_DIR" 2>/dev/null || true
+
 ok "Carpetas listas."
 
 APP_DIR="$DEPLOY_DIR/app"
@@ -92,13 +114,26 @@ APP_DIR="$DEPLOY_DIR/app"
 # --- 3. Código ---------------------------------------------------------------
 log "Preparando el código"
 
+# Si el repositorio es privado, el token viaja solo en la URL del clonado:
+# después se deja el remoto limpio, sin token, en .git/config.
+clone_url="$REPO"
+if [ -n "$REPO_TOKEN" ] && [ -n "$REPO" ]; then
+    clone_url="$(printf '%s' "$REPO" | sed -e "s|^https://|https://x-access-token:${REPO_TOKEN}@|")"
+fi
+
 if [ -n "$REPO" ]; then
     if [ -d "$APP_DIR/.git" ]; then
-        git -C "$APP_DIR" fetch --all --tags
+        fetch_url="$clone_url"
+        git -C "$APP_DIR" fetch --all --tags "$fetch_url" \
+            || die "No se pudo descargar el repositorio. Revisa --repo y --repo-token."
         git -C "$APP_DIR" checkout "$RAMA"
-        git -C "$APP_DIR" pull --ff-only origin "$RAMA"
+        git -C "$APP_DIR" reset --hard "origin/$RAMA" 2>/dev/null || git -C "$APP_DIR" pull --ff-only origin "$RAMA"
+        # El remoto se deja sin token.
+        git -C "$APP_DIR" remote set-url origin "$REPO" 2>/dev/null || true
     else
-        git clone --branch "$RAMA" "$REPO" "$APP_DIR"
+        git clone --branch "$RAMA" "$clone_url" "$APP_DIR" \
+            || die "No se pudo clonar $REPO. Revisa --repo y --repo-token."
+        git -C "$APP_DIR" remote set-url origin "$REPO" 2>/dev/null || true
     fi
     ok "Código actualizado desde $REPO ($RAMA)."
 elif [ -d "$APP_DIR/.git" ]; then
@@ -198,7 +233,7 @@ fi
 # --- 6. Levantar el stack ---------------------------------------------------
 log "Levantando el stack"
 
-export MEDIA_DIR="$DEPLOY_DIR/media"
+export MEDIA_DIR="$MEDIA_DIR"
 
 # `sudo` no hereda el entorno: se exporta en vez de prefijar el comando.
 export RUN_MIGRATIONS=true
@@ -215,58 +250,84 @@ for i in $(seq 1 30); do
 done
 
 # --- 7. Publicar la SPA -----------------------------------------------------
-log "Publicando la SPA en $DEPLOY_DIR/web"
+log "Publicando la SPA en $WEB_ROOT"
 
-rm -rf "$DEPLOY_DIR/web"/* 2>/dev/null || true
+# Se conserva .well-known: es donde el panel y la renovación del certificado
+# dejan el reto de ACME.
+find "$WEB_ROOT" -mindepth 1 -maxdepth 1 ! -name '.well-known' -exec rm -rf {} + 2>/dev/null || true
+
 container_id="$($DOCKER create sonora-web:prod)"
-$DOCKER cp "$container_id:/usr/share/nginx/html/." "$DEPLOY_DIR/web/"
+$DOCKER cp "$container_id:/usr/share/nginx/html/." "$WEB_ROOT/"
 $DOCKER rm "$container_id" >/dev/null
+
+if id -u www-data >/dev/null 2>&1; then
+    chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
+fi
+chmod -R a+rX "$WEB_ROOT" 2>/dev/null || true
 ok "SPA publicada."
 
 # --- 8. nginx del host -------------------------------------------------------
 log "Configurando nginx"
 
-install -m 644 "$APP_DIR/deploy/nginx/music.antoniogmportfolio.online.conf" \
-    "/etc/nginx/sites-available/$DOMINIO.conf"
+install -d -m 755 /etc/nginx/snippets
 install -m 644 "$APP_DIR/deploy/nginx/snippets/sonora-fastcgi.conf" \
     /etc/nginx/snippets/sonora-fastcgi.conf
+install -m 644 "$APP_DIR/deploy/nginx/snippets/security-headers.conf" \
+    /etc/nginx/snippets/security-headers.conf
 
-# La configuración generada usa el dominio por defecto; se adapta al real.
-sed -i "s/music\.antoniogmportfolio\.online/$DOMINIO/g" "/etc/nginx/sites-available/$DOMINIO.conf"
+install -m 644 "$APP_DIR/deploy/nginx/music.antoniogmportfolio.online.conf" \
+    "/etc/nginx/sites-available/$DOMINIO.conf"
 
-ln -sf "/etc/nginx/sites-available/$DOMINIO.conf" "/etc/nginx/sites-enabled/$DOMINIO.conf"
+NGINX_CONF="/etc/nginx/sites-available/$DOMINIO.conf"
+
+# La configuración generada trae los valores por defecto del servidor: se
+# adaptan a los reales (dominio, raíz web, logs y medios).
+sed -i \
+    -e "s|music\.antoniogmportfolio\.online|$DOMINIO|g" \
+    -e "s|/var/www/site-music-antoniogmport-5de994/htdocs|$WEB_ROOT|g" \
+    -e "s|/var/www/site-music-antoniogmport-5de994/logs|$LOG_DIR|g" \
+    -e "s|/srv/sonora/media|$MEDIA_DIR|g" \
+    "$NGINX_CONF"
+
+# HTTP/2: `http2 on;` existe desde nginx 1.25.1. En versiones anteriores la
+# opción va en la propia directiva `listen`.
+nginx_version="$(nginx -v 2>&1 | sed -e 's|.*nginx/||')"
+nginx_major="$(printf '%s' "$nginx_version" | cut -d. -f1)"
+nginx_minor="$(printf '%s' "$nginx_version" | cut -d. -f2)"
+
+if [ "$nginx_major" -gt 1 ] || { [ "$nginx_major" -eq 1 ] && [ "$nginx_minor" -ge 25 ]; }; then
+    sed -i "s|^    #__HTTP2__|    http2 on;|" "$NGINX_CONF"
+else
+    sed -i "s|^    #__HTTP2__||" "$NGINX_CONF"
+    sed -i "s|listen 443 ssl;|listen 443 ssl http2;|" "$NGINX_CONF"
+fi
+
+# Adminer: es una puerta abierta a la base de datos. Se puede quitar.
+if [ "$WITH_ADMINER" -eq 0 ]; then
+    sed -i '/#---BEGIN-ADMINER---/,/#---END-ADMINER---/d' "$NGINX_CONF"
+    ok "Bloque de Adminer omitido."
+fi
+
+ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/$DOMINIO.conf"
 rm -f /etc/nginx/sites-enabled/default
-
-# El directorio de medios debe poder leerlo nginx.
-chmod 755 "$DEPLOY_DIR" "$DEPLOY_DIR/media" 2>/dev/null || true
 
 nginx -t || die "La configuración de nginx no es válida."
 systemctl reload nginx || systemctl restart nginx
 ok "nginx configurado para $DOMINIO."
 
 # --- 9. TLS ------------------------------------------------------------------
-if [ "$SKIP_TLS" -eq 1 ]; then
-    warn "TLS omitido (--skip-tls)."
+log "Comprobando el certificado"
+
+CERT_DIR="/etc/letsencrypt/live/$DOMINIO"
+
+if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
+    ok "Certificado encontrado en $CERT_DIR (se renueva solo: no se toca certbot)."
+elif [ -f "/etc/nginx/snippets/ssl-options-ssl-nginx.conf" ]; then
+    warn "No hay certificado en $CERT_DIR, pero el servidor tiene snippets de SSL de nginx."
+    warn "Si el TLS lo termina otro servidor, ajusta a mano ssl_certificate en $NGINX_CONF."
 else
-    log "Emitiendo el certificado de Let's Encrypt"
-
-    if [ -z "$CORREO" ]; then
-        warn "Falta --email: no se puede emitir el certificado. Emítelo luego con:"
-        warn "  certbot --nginx -d $DOMINIO --email TU@EMAIL --agree-tos --no-eff-email"
-    else
-        if command -v certbot >/dev/null 2>&1; then
-            certbot --nginx -d "$DOMINIO" --email "$CORREO" --agree-tos --no-eff-email --redirect \
-                || warn "Certbot falló: revisa que el DNS apunte al servidor."
-        else
-            apt-get update -qq && apt-get install -y -qq certbot python3-certbot-nginx
-            certbot --nginx -d "$DOMINIO" --email "$CORREO" --agree-tos --no-eff-email --redirect \
-                || warn "Certbot falló: revisa que el DNS apunte al servidor."
-        fi
-
-        systemctl enable certbot.timer >/dev/null 2>&1 || true
-        systemctl start certbot.timer >/dev/null 2>&1 || true
-        ok "Certificado emitido y renovación automática activada."
-    fi
+    warn "No se encuentra el certificado en $CERT_DIR."
+    warn "Emítelo con: certbot --nginx -d $DOMINIO --email TU@EMAIL --agree-tos --no-eff-email"
 fi
 
 # --- 10. Tareas programadas --------------------------------------------------
@@ -286,7 +347,7 @@ else
     install -m 755 "$APP_DIR/deploy/monitor.sh" "$DEPLOY_DIR/deploy/monitor.sh"
 
     cat > /etc/default/sonora <<EOF
-MEDIA_DIR=$DEPLOY_DIR/media
+MEDIA_DIR=$MEDIA_DIR
 COMPOSE_FILE=$APP_DIR/docker-compose.prod.yml
 BACKUP_ROOT=$DEPLOY_DIR/backups
 DB_USER=$(grep -E '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
@@ -305,29 +366,39 @@ log "Verificando el despliegue"
 
 sleep 5
 
-health="(sin respuesta)"
-if command -v curl >/dev/null 2>&1; then
-    health="$(curl -fsS --max-time 15 "http://127.0.0.1:8080/api/v1/health" 2>/dev/null || echo '(sin respuesta)')"
-fi
+# Se prueba el vhost real contra el localhost: así se valida el TLS, la SPA y
+# el proxy a PHP-FPM, no solo los contenedores.
+resolve="--resolve ${DOMINIO}:443:127.0.0.1"
 
-if echo "$health" | grep -q '"status":"ok"'; then
-    ok "La API responde: $health"
-else
-    warn "La API no responde todavía. Revisa: docker compose -f $APP_DIR/docker-compose.prod.yml logs app"
-fi
+check_url() {
+    local url="$1" label="$2"
 
-spa="(sin respuesta)"
-if command -v curl >/dev/null 2>&1; then
-    spa="$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 15 "http://127.0.0.1:9000/" 2>/dev/null || echo '(sin respuesta)')"
-fi
-ok "PHP-FPM responde (status $spa)."
+    if ! command -v curl >/dev/null 2>&1; then
+        warn "curl no está disponible: no se puede comprobar $label."
+        return
+    fi
 
-if command -v curl >/dev/null 2>&1; then
-    https_status="$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 20 "https://$DOMINIO/" 2>/dev/null || echo '(sin respuesta)')"
-    if [ "$https_status" = "200" ]; then
-        ok "https://$DOMINIO responde con 200."
+    local status
+    status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 $resolve "$url" 2>/dev/null || echo '(sin respuesta)')"
+
+    if [ "$status" = "200" ]; then
+        ok "$label responde 200."
     else
-        warn "https://$DOMINIO devuelve '$https_status'. Revisa el certificado y nginx."
+        warn "$label devuelve '$status'."
+    fi
+}
+
+check_url "https://$DOMINIO/" "La SPA"
+check_url "https://$DOMINIO/api/v1/health" "La API"
+check_url "https://$DOMINIO/robots.txt" "robots.txt"
+check_url "https://$DOMINIO/sanctum/csrf-cookie" "La cookie CSRF"
+
+if command -v curl >/dev/null 2>&1; then
+    robots="$(curl -fsS --max-time 15 $resolve "https://$DOMINIO/robots.txt" 2>/dev/null || echo '')"
+    if printf '%s' "$robots" | grep -q 'Disallow: /'; then
+        ok "robots.txt prohíbe el rastreo (sitio privado)."
+    else
+        warn "robots.txt no contiene 'Disallow: /'. Revisa el ajuste de indexación."
     fi
 fi
 
@@ -340,7 +411,9 @@ $(printf '\033[1;32m')═══════════════════�
 
   Dominio:        https://$DOMINIO
   Código:         $APP_DIR
-  Medios:         $DEPLOY_DIR/media
+  Raíz web:       $WEB_ROOT
+  Logs nginx:     $LOG_DIR
+  Medios:         $MEDIA_DIR
   Backups:        $DEPLOY_DIR/backups
   Contraseña BD:  $DB_PASSWORD
 
@@ -352,6 +425,11 @@ $(cd "$APP_DIR" && $DOCKER compose --env-file backend/.env.production -f docker-
 
   Estado del sistema:
     $DEPLOY_DIR/deploy/monitor.sh
+
+  Primer arranque:
+    1. Entra en https://$DOMINIO/login con la cuenta de administrador.
+    2. Abre el panel de administración para registrar usuarios y cambiar los
+       ajustes del sitio (el registro público y la indexación están cerrados).
 
   Actualizar más adelante:
     cd $APP_DIR && git pull && \\

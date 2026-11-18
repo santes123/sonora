@@ -27,7 +27,7 @@ pendiente de aplicar en el servidor · ⬜ pendiente
 | Control | Estado | Cómo se verifica |
 |---|---|---|
 | HTTPS obligatorio (redirección 80 → 443) | 🔧 | `curl -I http://music.antoniogmportfolio.online` → 301/308 |
-| Certificado válido y renovable | 🔧 | `certbot certificates` / `ss -tlnp | grep 443` |
+| Certificado válido y renovable | 🔧 | Ya emitido y con renovación automática en el servidor: `ls /etc/letsencrypt/live/music.antoniogmportfolio.online/` / `ss -tlnp | grep 443` |
 | HSTS | 🔧 | `curl -I https://…` → `strict-transport-seconds` |
 | TLS 1.2+ | 🔧 | `sslscan` o `openssl s_client -tls1_1` |
 | `SESSION_SECURE_COOKIE=true` y `SameSite=lax` | 🔧 | `.env` de producción + inspección de `Set-Cookie` |
@@ -51,6 +51,11 @@ pendiente de aplicar en el servidor · ⬜ pendiente
 | Cada recurso privado comprueba el propietario | ✅ | Policies + `authorize()` en los controladores |
 | Playlists/listados ajenos → 403/404 | ✅ | Tests de feature |
 | Historial y favoritos son por usuario | ✅ | Consultas filtradas por `user_id` |
+| Registro público cerrado | ✅ | `SiteSettings::REGISTRATION_ENABLED` (por defecto `false`); `POST /api/v1/auth/register` → **403** |
+| Endpoints de administración solo para administradores | ✅ | Middleware `admin` + `authorize()` en los FormRequests; `GET /api/v1/admin/users` → **403** para un usuario normal |
+| Sin menús públicos que inviten a registrarse | ✅ | El enlace de registro solo aparece si el ajuste está abierto; `/register` muestra «Registro cerrado» |
+| Indexación por motores de búsqueda bloqueada | ✅ | `robots.txt` dinámico (`Disallow: /`) + `X-Robots-Tag: noindex, nofollow, noarchive` en todas las respuestas |
+| Audio de una canción eliminada no se sirve | ✅ | La URL firmada lleva el id de la canción: `StreamMediaController` responde **404** si está eliminada |
 
 ## 5. Entradas y subidas
 

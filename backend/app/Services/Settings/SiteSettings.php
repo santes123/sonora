@@ -3,6 +3,7 @@
 namespace App\Services\Settings;
 
 use App\Models\Setting;
+use Illuminate\Database\QueryException;
 
 /**
  * Ajustes del sitio, legibles y modificables desde la interfaz de
@@ -33,7 +34,7 @@ final class SiteSettings
      */
     public function all(): array
     {
-        $stored = Setting::all_cached();
+        $stored = $this->read();
 
         $values = [];
 
@@ -73,5 +74,40 @@ final class SiteSettings
         }
 
         return $this->all();
+    }
+
+    /**
+     * Lee los ajustes guardados.
+     *
+     * Si la tabla `settings` todavía no existe (una migración pendiente en un
+     * despliegue en curso), se devuelven los valores por defecto en lugar de
+     * tumbar el sitio: son restrictivos, así que el fallo es "cerrado", nunca
+     * "abierto".
+     *
+     * @return array<string, string|null>
+     */
+    private function read(): array
+    {
+        try {
+            return Setting::all_cached();
+        } catch (QueryException $e) {
+            if (! $this->isMissingTable($e)) {
+                throw $e;
+            }
+
+            return [];
+        }
+    }
+
+    /**
+     * ¿El error es "la tabla no existe"?
+     *
+     * SQLSTATE 42S02 es "base table or view not found" en MariaDB y MySQL.
+     */
+    private function isMissingTable(QueryException $e): bool
+    {
+        return $e->getCode() === '42S02'
+            || str_contains($e->getMessage(), 'Base table or view not found')
+            || str_contains($e->getMessage(), 'no such table');
     }
 }

@@ -10,27 +10,35 @@ en el stack de producción local (imagen multi-stage + `docker-compose.prod.yml`
 
 Hay un script que hace todo lo de este documento: comprueba el sistema,
 prepara las carpetas, despliega el código, construye las imágenes, levanta el
-stack, instala nginx con TLS, programa las tareas y verifica que todo
+stack, instala nginx, publica la SPA, programa las tareas y verifica que todo
 responde.
 
 ```bash
-# En el servidor, con el repositorio ya clonado:
+# En el servidor (el script clona o actualiza el repositorio):
 sudo ./deploy/deploy.sh \
-    --domain music.antoniogmportfolio.online \
-    --email tu@email.com
+    --repo https://github.com/TU_USUARIO/sonora.git
 ```
 
 Opciones útiles:
 
 | Opción | Para qué |
 |---|---|
-| `--repo URL` | Desplegar desde un repositorio git (actualiza el código solo) |
+| `--repo URL` | Repositorio git a desplegar (clona si no existe, actualiza si ya está) |
+| `--repo-token TOKEN` | Acceso a un repositorio privado (el token no se queda en `.git/config`) |
 | `--branch RAMA` | Rama a desplegar (por defecto `main`) |
+| `--domain DOMINIO` | Dominio público (por defecto `music.antoniogmportfolio.online`) |
+| `--web-root RUTA` | Raíz web de nginx (por defecto la del panel) |
+| `--log-dir RUTA` | Directorio de logs de nginx (por defecto el del panel) |
+| `--media-dir RUTA` | Medios privados (por defecto `/srv/sonora/media`) |
 | `--app-key CLAVE` | Fijar el `APP_KEY` (si no, se genera y se guarda) |
 | `--db-password CLAVE` | Fijar la contraseña de MariaDB (si no, se genera) |
-| `--skip-tls` | Probar el despliegue antes de que el DNS apunte |
+| `--no-adminer` | No instalar el bloque de Adminer en nginx |
 | `--skip-build` | No reconstruir imágenes (despliegue rápido) |
 | `--skip-cron` | No instalar las tareas programadas |
+
+> **El TLS no lo toca el script.** El servidor ya tiene el certificado en
+> `/etc/letsencrypt/live/music.antoniogmportfolio.online/` y se renueva solo:
+> el script solo comprueba que siga ahí y lo usa. No lanza `certbot`.
 
 Al terminar imprime el estado de los servicios, la contraseña de la base de
 datos y los comandos para actualizar, hacer backup y revisar el estado.
@@ -44,12 +52,13 @@ datos y los comandos para actualizar, hacer backup y revisar el estado.
 
 ```
 Internet
-   │  HTTPS (443) · Let's Encrypt
+   │  HTTPS (443) · Let's Encrypt (ya emitido, se renueva solo)
    ▼
 nginx del host (Ubuntu)          ← TLS, SPA estática, cabeceras de seguridad
-   │ ├── /            → /srv/sonora/web (index.html + assets con hash)
+   │ ├── /            → /var/www/site-music-antoniogmport-5de994/htdocs
    │ ├── /api/        → fastcgi_pass 127.0.0.1:9000  (PHP-FPM del contenedor)
    │ ├── /sanctum/    → fastcgi_pass 127.0.0.1:9000
+   │ ├── /robots.txt  → fastcgi_pass 127.0.0.1:9000  (lo genera la app)
    │ └── /_media/     → /srv/sonora/media  (X-Accel-Redirect, `internal`)
    │
 Docker (red interna `sonora`)
@@ -184,44 +193,61 @@ curl -s http://127.0.0.1:8080/api/v1/health
 
 ### Publicar la SPA
 
-El nginx del host sirve la SPA desde `/srv/sonora/web`. Se extrae de la imagen
+El nginx del host sirve la SPA desde la raíz web del panel
+(`/var/www/site-music-antoniogmport-5de994/htdocs`). Se extrae de la imagen
 `sonora-web`:
 
 ```bash
 docker create --name sonora-web-extract sonora-web:prod
-docker cp sonora-web-extract:/usr/share/nginx/html/. /srv/sonora/web/
+docker cp sonora-web-extract:/usr/share/nginx/html/. \
+        /var/www/site-music-antoniogmport-5de994/htdocs/
 docker rm sonora-web-extract
 ```
 
 En cada despliegue hay que repetirlo (los assets llevan hash: si no se copian,
-la SPA seguirá pidiendo los ficheros antiguos).
+la SPA seguirá pidiendo los ficheros antiguos). `deploy.sh` lo hace y conserva
+`.well-known/`, donde el panel y la renovación del certificado dejan el reto
+de ACME.
 
 ---
 
 ## 6. nginx del host y TLS
 
 ```bash
-sudo cp /etc/nginx/sites-available/music.antoniogmportfolio.online.conf \
-        /etc/nginx/sites-available/ 2>/dev/null || \
 sudo cp deploy/nginx/music.antoniogmportfolio.online.conf \
-        /etc/nginx/sites-available/
-
-sudo cp deploy/nginx/snippets/sonora-fastcgi.conf /etc/nginx/snippets/
+        /etc/nginx/sites-available/music.antoniogmportfolio.online.conf
+sudo cp deploy/nginx/snippets/sonora-fastcgi.conf \
+        deploy/nginx/snippets/security-headers.conf /etc/nginx/snippets/
 sudo ln -sf /etc/nginx/sites-available/music.antoniogmportfolio.online.conf \
            /etc/nginx/sites-enabled/music.antoniogmportfolio.online
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Certificado (Let's Encrypt):
+### El certificado
 
-```bash
-sudo certbot --nginx -d music.antoniogmportfolio.online
-sudo systemctl enable certbot.timer && sudo systemctl start certbot.timer
-```
+**El servidor ya tiene el certificado y se renueva solo.** No hay que ejecutar
+`certbot` ni tocar nada:
 
-`certbot.timer` renueva el certificado automáticamente; el reto de ACME está
-excluido de la redirección a HTTPS en el bloque `listen 80`.
+| Ruta | Contenido |
+|---|---|
+| `/etc/letsencrypt/live/music.antoniogmportfolio.online/fullchain.pem` | Certificado |
+| `/etc/letsencrypt/live/music.antoniogmportfolio.online/privkey.pem` | Clave privada |
+| `/etc/letsencrypt/options-ssl-nginx.conf` | Ajustes de TLS que ya se incluyen |
+
+La configuración incluye ese último fichero y **no** redefine `ssl_protocols`
+ni `ssl_session_cache` (duplicarlos hace que nginx no arranque). El reto de
+ACME se sirve desde la raíz web, sin redirección a HTTPS, para que la
+renovación automática siga funcionando.
+
+`deploy.sh` comprueba que el certificado siga en su sitio y avisa si falta,
+pero nunca emite ni renueva nada.
+
+### Adminer
+
+El bloque de Adminer viene aplanado (nginx no admite `location` anidados) y
+apunta al PHP-FPM del host. Es una puerta abierta a la base de datos: si no lo
+necesitas, despliega con `--no-adminer`.
 
 ---
 
@@ -398,8 +424,47 @@ catálogo, subida de audio, URL firmada y streaming con Range (206).
 - [ ] `SANCTUM_STATEFUL_DOMAINS` y `SESSION_DOMAIN` con el dominio real.
 - [ ] `docker compose ps` → todos los servicios arriba y healthy.
 - [ ] `curl https://…/api/v1/health` → `{"status":"ok"}`.
-- [ ] Certificado emitido y `certbot.timer` activo.
+- [ ] `curl https://…/robots.txt` → `Disallow: /` (sitio privado).
+- [ ] Certificado presente en `/etc/letsencrypt/live/music.antoniogmportfolio.online/`
+      (ya se renueva solo: no hay que ejecutar `certbot`).
 - [ ] Copia de seguridad ejecutada y **verificada con restauración**.
 - [ ] `nginx -t` sin errores y `systemctl reload nginx` aplicado.
 - [ ] Prueba de humo (`smoke-prod.ps1`) sin fallos.
 - [ ] Checklist de seguridad revisado (`docs/03-checklist-seguridad.md`).
+
+---
+
+## 14. Primer arranque: la cuenta de administrador
+
+El registro público está **cerrado** (es un sitio privado) y la indexación por
+motores de búsqueda está **bloqueada**. Los dos se cambian desde el panel de
+administración, sin tocar el servidor.
+
+1. Crear la primera cuenta de administrador (una sola vez):
+
+   ```bash
+   cd /srv/sonora/app
+   docker compose --env-file backend/.env.production -f docker-compose.prod.yml \
+       exec app php artisan sonora:create-admin \
+       --name=Administrador --email=admin@ejemplo.com --password='una-contrasena-larga'
+   ```
+
+   Si se omite `--password`, se genera una y se muestra por pantalla (no se
+   guarda en ningún sitio).
+
+2. Entrar en `https://music.antoniogmportfolio.online/login`.
+
+3. Abrir el panel de administración (icono de engranaje en la barra superior):
+   - **Ajustes del sitio**: registrar público e indexación.
+   - **Registrar un usuario**: dar de alta cuentas.
+
+4. Comprobar el estado del sitio:
+
+   ```bash
+   curl -s https://music.antoniogmportfolio.online/api/v1/settings
+   # {"registration_enabled":false,"allow_indexing":false}
+   ```
+
+> El registro y la indexación están cerrados por defecto **y también si la
+> tabla `settings` todavía no existe**: el sitio responde con los valores
+> restrictivos en vez de caerse.

@@ -319,7 +319,7 @@ users ──< playlists ──< playlist_items >── songs
   - MariaDB y Redis **solo** en `127.0.0.1` y red interna; PHP-FPM publicado únicamente en `127.0.0.1:9000`.
   - `max_connections=100`, buffer pool 2G, slow query log a 0,5 s; Redis con `noeviction` (nunca evicta sesiones ni jobs).
   - Perfil opcional `nginx-docker` para servir también la web desde Docker.
-- [x] TLS con nginx + Certbot (Let's Encrypt) y renovación por `certbot.timer`.
+- [x] TLS con nginx + Certbot (Let's Encrypt). En el servidor real el certificado ya está emitido y se renueva solo: `deploy.sh` no lanza `certbot`, solo comprueba que el certificado siga en su sitio.
   - Configuración del host en `deploy/nginx/`: redirección 80→443 (excluyendo el reto de ACME), HSTS, TLS 1.2/1.3, `limit`-de-cabeceras y `log_format` con `rt`/`urt`.
 - [x] Cron: copia diaria + verificación semanal con restauración real, monitor de salud cada 5 minutos, mantenimiento (prune de Docker, disco, memoria), `media:gc` dentro del contenedor `scheduler` y `logrotate`.
 - [x] Backups y restauración (`deploy/backup.sh`, `deploy/restore.sh`).
@@ -330,6 +330,50 @@ users ──< playlists ──< playlist_items >── songs
 - [x] Pruebas de carga: guion k6 (`deploy/load/api.js`) con usuarios autenticados y umbrales, y script rápido en Node (`deploy/load/quick.js`).
 - [x] Checklist de seguridad (`docs/03-checklist-seguridad.md`).
 - [ ] Despliegue real en `music.antoniogmportfolio.online` (pendiente de servidor y DNS).
+
+### Fase 7 — Sitio privado y operación real
+
+El sitio es privado: no es un catálogo público, es la biblioteca de un grupo
+de personas. Eso cambia tres cosas que antes no existían.
+
+- [x] **Registro cerrado y alta de cuentas por el administrador.**
+  - Tabla `settings` (clave/valor) para los ajustes del sitio: se cambian desde
+    la interfaz sin rehacer la imagen ni reiniciar el servidor.
+  - `GET /api/v1/settings` es público (la SPA necesita saber si el registro está
+    abierto antes de iniciar sesión); `GET|PATCH /api/v1/admin/settings` y
+    `GET|POST /api/v1/admin/users` son solo de administrador (middleware
+    `admin` + validación en el formulario).
+  - `POST /api/v1/auth/register` responde **403** con el registro cerrado: el
+    endpoint sigue existiendo, pero no hay ningún menú público que lo use.
+  - Panel de administración en la SPA (`/admin`): casillas de registro e
+    indexación, alta de cuentas y listado de las existentes.
+  - Arranque en frío: `php artisan sonora:create-admin` crea la primera cuenta.
+- [x] **Indexación bloqueada.**
+  - `robots.txt` **dinámico** (lo genera la app): `Disallow: /` mientras el
+    ajuste siga cerrado, `Allow: /` si el administrador lo abre.
+  - Cabecera `X-Robots-Tag: noindex, nofollow, noarchive` en todas las
+    respuestas (middleware global) y metaetiqueta `robots` en la SPA.
+  - Copia estática en `backend/public/robots.txt` como red de seguridad.
+- [x] **Borrado lógico de canciones** (`songs.deleted_at`).
+  - La canción desaparece del catálogo y deja de servirse, pero **sigue en las
+    playlists** de otras personas marcada como «No disponible»; el reproductor
+    la salta. El binario se conserva: el borrado es reversible.
+  - La URL firmada lleva el identificador de la canción, así que el audio deja
+    de servirse aunque alguien conserve una URL ya emitida (una consulta por
+    clave primaria, sin tocar el índice de medios).
+  - `POST /api/v1/songs/{song}/restore` (solo admin) la devuelve al catálogo.
+  - El GC de medios y la cola de borrado distinguen «eliminado» de «huérfano».
+- [x] **Despliegue adaptado al servidor real.**
+  - `deploy.sh`: clona/actualiza el repositorio de GitHub (con soporte para
+    repositorios privados), publica la SPA en la raíz web del panel, instala la
+    configuración de nginx con las rutas reales y **no toca `certbot`** (el
+    certificado ya existe y se renueva solo).
+  - `deploy/nginx/`: `log_format` en el contexto `http` (si no, nginx no
+    arranca), bloque de Adminer aplanado (nginx no admite `location`
+    anidados) y `robots.txt` servido por la aplicación.
+  - Verificado en un contenedor real contra el stack de producción: SPA 200,
+    API 200, `robots.txt` con `Disallow: /`, cookie CSRF 204, 401 sin sesión
+    y cabecera `X-Robots-Tag` presente.
 
 ---
 

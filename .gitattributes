@@ -1,0 +1,28 @@
+# Normalización general: el repositorio guarda siempre LF.
+* text=auto
+
+# Los ficheros que se ejecutan en el servidor deben llegar con LF: con CRLF,
+# bash falla con "\r: command not found" y nginx no arranca.
+*.sh text eol=lf
+deploy/** text eol=lf
+docker/**/*.sh text eol=lf
+docker/nginx/** text eol=lf
+docker/php/** text eol=lf
+
+# Las imágenes se construyen dentro de Docker (Linux): LF también allí.
+Dockerfile text eol=lf
+docker/**/Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Los ficheros binarios no se tocan.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.flac binary
+*.woff binary
+*.woff2 binary

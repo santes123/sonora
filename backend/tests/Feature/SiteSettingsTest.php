@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Services\Settings\SiteSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -117,5 +118,20 @@ class SiteSettingsTest extends TestCase
         $this->getJson('/api/v1/health')
             ->assertOk()
             ->assertHeaderMissing('X-Robots-Tag');
+    }
+
+    public function test_a_missing_settings_table_does_not_take_the_site_down(): void
+    {
+        // En un despliegue en curso puede pasar que el código nuevo esté
+        // vivo y la migración todavía no: el sitio debe seguir respondiendo
+        // con los valores restrictivos por defecto.
+        Schema::drop('settings');
+
+        $this->getJson('/api/v1/settings')->assertOk()
+            ->assertJsonPath('registration_enabled', false)
+            ->assertJsonPath('allow_indexing', false);
+
+        $this->getJson('/api/v1/health')->assertOk()
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     }
 }
