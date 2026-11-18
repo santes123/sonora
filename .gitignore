@@ -22,6 +22,9 @@
 /.tmp/
 /.backups/
 
+# Claves de despliegue (deploy key SSH y similares)
+/.deploy/
+
 # Builds
 /frontend/dist/
 /frontend/dev-dist/
