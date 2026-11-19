@@ -19,6 +19,11 @@ sudo ./deploy/deploy.sh \
     --repo https://github.com/TU_USUARIO/sonora.git
 ```
 
+> **Repositorio privado:** hay cuatro formas de autenticarse (HTTPS con token,
+> credenciales guardadas en el servidor, SSH con deploy key o repositorio
+> público). Están explicadas paso a paso en
+> [04-guia-acceso-repositorio.md](04-guia-acceso-repositorio.md).
+
 Opciones útiles:
 
 | Opción | Para qué |

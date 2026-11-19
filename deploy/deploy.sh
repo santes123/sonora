@@ -10,7 +10,18 @@
 # NO lanza certbot: comprueba que el certificado esté en su sitio y lo usa.
 #
 # Uso:
+#   # Repositorio público por HTTPS
 #   sudo ./deploy/deploy.sh --repo https://github.com/TU_USUARIO/sonora.git
+#
+#   # Repositorio privado por HTTPS con un token de GitHub
+#   sudo env REPO_TOKEN=ghp_xxx ./deploy/deploy.sh \
+#       --repo https://github.com/TU_USUARIO/sonora.git
+#
+#   # Repositorio privado por SSH (deploy key de solo lectura)
+#   sudo ./deploy/deploy.sh --repo git@github.com:TU_USUARIO/sonora.git
+#
+# Las cuatro formas de autenticarse y cuál elegir están en
+# docs/04-guia-acceso-repositorio.md
 #
 # Opciones:
 #   --repo URL           repositorio git a desplegar (usa el actual si se omite)
@@ -64,7 +75,7 @@ while [ $# -gt 0 ]; do
         --no-adminer) WITH_ADMINER=0; shift ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --skip-cron) SKIP_CRON=1; shift ;;
-        -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
         *) echo "Opción desconocida: $1" >&2; exit 1 ;;
     esac
 done
@@ -116,24 +127,59 @@ log "Preparando el código"
 
 # Si el repositorio es privado, el token viaja solo en la URL del clonado:
 # después se deja el remoto limpio, sin token, en .git/config.
+#
+# GIT_TERMINAL_PROMPT=0 evita que un despliegue no interactivo se quede
+# colgado esperando usuario/contraseña: si falta la autenticación, falla
+# enseguida y con un mensaje que dice cómo arreglarlo.
+export GIT_TERMINAL_PROMPT=0
+
 clone_url="$REPO"
 if [ -n "$REPO_TOKEN" ] && [ -n "$REPO" ]; then
     clone_url="$(printf '%s' "$REPO" | sed -e "s|^https://|https://x-access-token:${REPO_TOKEN}@|")"
 fi
 
+# Ayuda cuando git no puede autenticarse contra el repositorio.
+auth_help() {
+    cat >&2 <<'MSG'
+  Formas de autenticarse (guía completa en docs/04-guia-acceso-repositorio.md):
+
+    1) HTTPS con token de GitHub (recomendado para repos privados):
+         sudo env REPO_TOKEN=ghp_xxx ./deploy/deploy.sh \
+             --repo https://github.com/USUARIO/sonora.git
+       El token necesita el ámbito "repo" y no se queda en .git/config.
+
+    2) HTTPS con el ayudante de credenciales de GitHub CLI:
+         gh auth login && gh auth setup-git
+       y después:
+         sudo ./deploy/deploy.sh --repo https://github.com/USUARIO/sonora.git
+
+    3) SSH con una deploy key de solo lectura:
+         sudo ./deploy/deploy.sh --repo git@github.com:USUARIO/sonora.git
+
+MSG
+}
+
+# Deja el remoto sin token y borra cualquier rastro del token en la config.
+clean_remote() {
+    git -C "$APP_DIR" remote set-url origin "$REPO" 2>/dev/null || true
+    if [ -n "$REPO_TOKEN" ] && [ -f "$APP_DIR/.git/config" ]; then
+        sed -i "s|${REPO_TOKEN}|***|g" "$APP_DIR/.git/config" || true
+    fi
+}
+
 if [ -n "$REPO" ]; then
     if [ -d "$APP_DIR/.git" ]; then
         fetch_url="$clone_url"
         git -C "$APP_DIR" fetch --all --tags "$fetch_url" \
-            || die "No se pudo descargar el repositorio. Revisa --repo y --repo-token."
+            || { auth_help; die "No se pudo descargar el repositorio. Revisa --repo y --repo-token."; }
         git -C "$APP_DIR" checkout "$RAMA"
         git -C "$APP_DIR" reset --hard "origin/$RAMA" 2>/dev/null || git -C "$APP_DIR" pull --ff-only origin "$RAMA"
         # El remoto se deja sin token.
-        git -C "$APP_DIR" remote set-url origin "$REPO" 2>/dev/null || true
+        clean_remote
     else
         git clone --branch "$RAMA" "$clone_url" "$APP_DIR" \
-            || die "No se pudo clonar $REPO. Revisa --repo y --repo-token."
-        git -C "$APP_DIR" remote set-url origin "$REPO" 2>/dev/null || true
+            || { auth_help; die "No se pudo clonar $REPO. Revisa --repo y --repo-token."; }
+        clean_remote
     fi
     ok "Código actualizado desde $REPO ($RAMA)."
 elif [ -d "$APP_DIR/.git" ]; then
