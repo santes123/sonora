@@ -38,6 +38,8 @@
 #   --nginx-dir RUTA     configuración de nginx a usar (por defecto se detecta:
 #                        /etc/nginx-second, /etc/nginx, ...)
 #   --nginx-service NOMBRE  servicio systemd de nginx (por defecto se detecta)
+#   --spa-dir NOMBRE      subdirectorio del web root donde se publica la SPA
+#                        (por defecto "web"; vacío = en la raíz del web root)
 #   --no-adminer         no instalar el bloque de Adminer en nginx
 #   --install-nginx     reinstalar el vhost de nginx (por defecto se conserva
 #                        el que ya haya, por si está editado a mano)
@@ -72,6 +74,9 @@ BIND_REDIS_PORT="${BIND_REDIS_PORT:-6380}"
 # la del panel "nginx-second", la estándar, etc.).
 NGINX_DIR_OVERRIDE="${NGINX_DIR:-}"
 NGINX_SERVICE_OVERRIDE="${NGINX_SERVICE:-}"
+# Subdirectorio del web root donde se publica la SPA. Con "web", el despliegue
+# borra solo ese directorio y no toca el resto (index.php del panel, etc.).
+SPA_DIR_NAME="${SPA_DIR:-web}"
 SKIP_BUILD=0
 SKIP_CRON=0
 SKIP_SPA=0
@@ -99,6 +104,7 @@ while [ $# -gt 0 ]; do
         --fpm-port) FPM_PORT="$2"; shift 2 ;;
         --nginx-dir) NGINX_DIR_OVERRIDE="$2"; shift 2 ;;
         --nginx-service) NGINX_SERVICE_OVERRIDE="$2"; shift 2 ;;
+        --spa-dir) SPA_DIR_NAME="$2"; shift 2 ;;
         --no-adminer) WITH_ADMINER=0; shift ;;
         --install-nginx) INSTALL_NGINX=1; shift ;;
         --install-cron) INSTALL_CRON=1; shift ;;
@@ -420,18 +426,34 @@ for i in $(seq 1 30); do
 done
 
 # --- 7. Publicar la SPA -----------------------------------------------------
+# La SPA se publica en un subdirectorio propio del web root (por defecto
+# "web"). Así el despliegue borra SOLO ese directorio y el resto del web root
+# (index.php del panel, .well-known del ACME, etc.) no se toca nunca.
+if [ -n "$SPA_DIR_NAME" ]; then
+    SPA_PUBLISH_DIR="$WEB_ROOT/$SPA_DIR_NAME"
+    SPA_NGINX_ROOT="$WEB_ROOT/$SPA_DIR_NAME"
+else
+    SPA_PUBLISH_DIR="$WEB_ROOT"
+    SPA_NGINX_ROOT="$WEB_ROOT"
+fi
+
 if [ "$SKIP_SPA" -eq 1 ]; then
     warn "Publicación de la SPA omitida (--skip-spa)."
 else
-    log "Publicando la SPA en $WEB_ROOT"
+    log "Publicando la SPA en $SPA_PUBLISH_DIR"
 
-    # Solo se borran los ficheros que genera la SPA. El resto del web root
-    # (`.well-known` del panel, `index.php` de Adminer, etc.) se deja intacto:
-    # ese directorio lo comparte el panel de hosting con el sitio.
-    rm -rf "$WEB_ROOT/assets" "$WEB_ROOT/icons" 2>/dev/null || true
-    rm -f "$WEB_ROOT/index.html" "$WEB_ROOT/sw.js" "$WEB_ROOT/registerSW.js" \
-        "$WEB_ROOT/manifest.webmanifest" "$WEB_ROOT/favicon.svg" "$WEB_ROOT/50x.html" \
-        2>/dev/null || true
+    # El directorio de la SPA es nuestro: se vacía entero.
+    rm -rf "${SPA_PUBLISH_DIR:?}" 2>/dev/null || true
+    mkdir -p "$SPA_PUBLISH_DIR"
+
+    # Limpieza de despliegues antiguos, cuando la SPA se publicaba en la raíz
+    # del web root: se retiran solo los ficheros que genera la SPA.
+    if [ "$SPA_PUBLISH_DIR" != "$WEB_ROOT" ]; then
+        rm -rf "$WEB_ROOT/assets" "$WEB_ROOT/icons" 2>/dev/null || true
+        rm -f "$WEB_ROOT/index.html" "$WEB_ROOT/sw.js" "$WEB_ROOT/registerSW.js" \
+            "$WEB_ROOT/manifest.webmanifest" "$WEB_ROOT/favicon.svg" "$WEB_ROOT/50x.html" \
+            2>/dev/null || true
+    fi
 
     if ! $DOCKER image inspect sonora-web:prod >/dev/null 2>&1; then
         if [ "$SKIP_BUILD" -eq 1 ]; then
@@ -444,14 +466,14 @@ else
     fi
 
     container_id="$($DOCKER create sonora-web:prod)"
-    $DOCKER cp "$container_id:/usr/share/nginx/html/." "$WEB_ROOT/"
+    $DOCKER cp "$container_id:/usr/share/nginx/html/." "$SPA_PUBLISH_DIR/"
     $DOCKER rm "$container_id" >/dev/null
 
     if id -u www-data >/dev/null 2>&1; then
-        chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
+        chown -R www-data:www-data "$SPA_PUBLISH_DIR" 2>/dev/null || true
     fi
-    chmod -R a+rX "$WEB_ROOT" 2>/dev/null || true
-    ok "SPA publicada."
+    chmod -R a+rX "$SPA_PUBLISH_DIR" 2>/dev/null || true
+    ok "SPA publicada en $SPA_PUBLISH_DIR."
 fi
 
 # --- 8. nginx del host -------------------------------------------------------
@@ -550,10 +572,12 @@ sed -i "s|include /etc/nginx/fastcgi_params;|include $FASTCGI_PARAMS;|" \
 
 NGINX_CONF="$NGINX_SITES_AVAILABLE/$DOMINIO.conf"
 
-# El vhost se instala UNA vez. Si ya existe se conserva: puede estar editado
-# a mano (límites, certificados, reglas propias). Con --install-nginx se
-# reinstala desde el repositorio.
-if [ -f "$NGINX_CONF" ] && [ "$INSTALL_NGINX" -eq 0 ]; then
+# El vhost se instala UNA vez. Si el fichero que hay ya es el NUESTRO (se
+# reconoce porque incluye nuestro snippet de FastCGI), se conserva: puede
+# estar editado a mano. Si es el del panel de hosting, que no sabe nada de
+# nuestra API y devuelve 404 en /api/, se sustituye guardando una copia.
+if [ -f "$NGINX_CONF" ] && grep -q "sonora-fastcgi.conf" "$NGINX_CONF" \
+    && [ "$INSTALL_NGINX" -eq 0 ]; then
     ok "Configuración de nginx conservada ($NGINX_CONF)."
     ok "Para reinstalarla desde el repositorio: --install-nginx"
 else
@@ -566,13 +590,14 @@ else
         ok "Copia de seguridad: $NGINX_CONF.bak"
     fi
 
-    install -m 644 "$vhost_src" "$NGINX_CONF" "$NGINX_CONF"
+    install -m 644 "$vhost_src" "$NGINX_CONF"
 
     # La configuración generada trae los valores por defecto del servidor: se
     # adaptan a los reales (dominio, raíz web, logs, medios, snippets).
     sed -i \
-        -e "s|music\.antoniogmportfolio\.online|$DOMINIO|g" \
+        -e "s|/var/www/site-music-antoniogmport-5de994/htdocs/web|$SPA_NGINX_ROOT|g" \
         -e "s|/var/www/site-music-antoniogmport-5de994/htdocs|$WEB_ROOT|g" \
+        -e "s|music\.antoniogmportfolio\.online|$DOMINIO|g" \
         -e "s|/var/www/site-music-antoniogmport-5de994/logs|$LOG_DIR|g" \
         -e "s|/srv/sonora/media|$MEDIA_DIR|g" \
         -e "s|/etc/nginx/snippets|$SNIPPETS_DIR|g" \

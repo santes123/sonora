@@ -93,6 +93,10 @@ programadas se instalan **solo la primera vez**; si ya existen, se conservan.
 Para reinstalarlos: `--install-nginx` y `--install-cron`. Y si prefieres
 publicar la SPA a mano: `--skip-spa`.
 
+**La SPA se publica en `htdocs/web/`** (subdirectorio propio), así el
+despliegue borra solo esa carpeta y no toca el `index.php` del panel ni el
+`.well-known` del certificado. Configurable con `--spa-dir`.
+
 **Puertos y contenedores**: el stack publica PHP-FPM en `127.0.0.1:9001`
 (opción `--fpm-port` para cambiarlo), MariaDB en `3307` y Redis en `6380`.
 `deploy.sh` comprueba que estén libres **antes** de construir las imágenes y

@@ -40,6 +40,7 @@ Opciones útiles:
 | `--fpm-port PUERTO` | Puerto del host para PHP-FPM (por defecto **9001**) |
 | `--nginx-dir RUTA` | Configuración de nginx a usar (por defecto se detecta) |
 | `--nginx-service NOMBRE` | Servicio systemd de nginx (por defecto se detecta) |
+| `--spa-dir NOMBRE` | Subdirectorio del web root donde se publica la SPA (por defecto `web`) |
 | `--no-adminer` | No instalar el bloque de Adminer en nginx |
 | `--install-nginx` | Reinstalar el vhost de nginx (por defecto se conserva el que ya haya) |
 | `--install-cron` | Reinstalar las tareas programadas (por defecto se conservan) |
@@ -261,11 +262,28 @@ docker rm sonora-web-extract
 En cada despliegue hay que repetirlo (los assets llevan hash: si no se copian,
 la SPA seguirá pidiendo los ficheros antiguos).
 
-`deploy.sh` lo hace automáticamente y **solo borra los ficheros que genera la
-SPA** (`assets/`, `icons/`, `index.html`, `sw.js`, `registerSW.js`,
-`manifest.webmanifest`, `favicon.svg`). El resto de la raíz web no se toca:
-`.well-known/` (donde el panel y la renovación del certificado dejan el reto
-de ACME) y cualquier fichero del panel siguen intactos.
+### Dónde se publica la SPA
+
+La SPA vive en un **subdirectorio propio** del web root:
+
+```
+/var/www/site-music-antoniogmport-5de994/htdocs/
+├── .well-known/      ← reto de ACME (del panel, no se toca)
+├── index.php         ← página del panel (no se toca)
+└── web/              ← AQUÍ va la SPA (se borra entero en cada despliegue)
+    ├── index.html
+    ├── assets/
+    ├── sw.js
+    └── ...
+```
+
+Así el despliegue **solo borra `htdocs/web/`**: el `index.php` del panel, el
+`.well-known` del certificado y cualquier otra cosa del web root quedan
+intactos. Es configurable con `--spa-dir` (con `--spa-dir ""` se publica en
+la raíz del web root).
+
+El `root` del vhost apunta a ese subdirectorio; el reto de ACME sigue
+sirviéndose desde la raíz del web root, con su `location` propio.
 
 Si prefieres publicar la SPA a mano: `--skip-spa`.de ACME.
 
@@ -285,15 +303,20 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 > **El vhost se instala una sola vez.** `deploy.sh` copia el fichero del
-> repositorio a `/etc/nginx/sites-available/` **solo si no existe**: si ya
-> está, lo conserva (por si lo has editado a mano: límites, reglas propias,
-> certificados). Para reinstalarlo desde el repositorio: `--install-nginx`.
+> repositorio a `sites-available/` **solo si el que hay no es el nuestro**:
 >
-> Lo que sí se actualiza siempre es el snippet
-> `/etc/nginx/snippets/sonora-fastcgi.conf`, porque fija el puerto de PHP-FPM
-> (`fastcgi_pass`): si no coincide con el que publica Docker, la API
-> respondería 502. Ese snippet es generado por el proyecto, no es configuración
-> manual.
+> - Si el fichero que ya existe es el del **panel de hosting** (no incluye
+>   nuestro snippet de FastCGI), **se sustituye**: ese vhost no sabe nada de
+>   nuestra API y devuelve `404` en `/api/`. Se guarda una copia en
+>   `<fichero>.bak`.
+> - Si ya es **el nuestro**, se conserva (por si lo has editado a mano:
+>   límites, reglas propias, certificados). Para reinstalarlo desde el
+>   repositorio: `--install-nginx`.
+>
+> Lo que sí se actualiza siempre es el snippet de FastCGI, porque fija el
+> puerto de PHP-FPM (`fastcgi_pass`): si no coincide con el que publica
+> Docker, la API respondería 502. Ese snippet es generado por el proyecto, no
+> es configuración manual.
 
 ### Si el servidor tiene varias instancias de nginx
 
