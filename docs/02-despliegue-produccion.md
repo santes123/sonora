@@ -581,12 +581,17 @@ El registro público está **cerrado** (es un sitio privado) y la indexación po
 motores de búsqueda está **bloqueada**. Los dos se cambian desde el panel de
 administración, sin tocar el servidor.
 
+> **Usa siempre `sonora.sh`.** Es el helper que instala `deploy.sh` en
+> `/srv/sonora/deploy/sonora.sh`: resuelve las rutas de forma absoluta, así que
+> funciona desde cualquier directorio. Si lanzas `docker compose` a mano desde
+> `~` (o desde cualquier sitio que no sea `/srv/sonora/app`), compose busca el
+> env en `/backend/.env.production` y falla con
+> `couldn't find env file`.
+
 1. Crear la primera cuenta de administrador (una sola vez):
 
    ```bash
-   cd /srv/sonora/app
-   docker compose --env-file backend/.env.production -f docker-compose.prod.yml \
-       exec app php artisan sonora:create-admin \
+   sudo /srv/sonora/deploy/sonora.sh artisan sonora:create-admin \
        --name=Administrador --email=admin@ejemplo.com --password='una-contrasena-larga'
    ```
 
@@ -597,9 +602,7 @@ administración, sin tocar el servidor.
    cuentas pero no las edita: para eso está el comando `sonora:update-user`.
 
    ```bash
-   cd /srv/sonora/app
-   docker compose --env-file backend/.env.production -f docker-compose.prod.yml \
-       exec app php artisan sonora:update-user \
+   sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
        --email=tu@correo.com --new-email=nuevo@correo.com
    ```
 
@@ -626,6 +629,18 @@ administración, sin tocar el servidor.
    ```bash
    curl -s https://music.antoniogmportfolio.online/api/v1/settings
    # {"registration_enabled":false,"allow_indexing":false}
+   ```
+
+5. Operaciones puntuales contra la base de datos (el helper pone las
+   credenciales del `.env.production`):
+
+   ```bash
+   # Ver las cuentas
+   sudo /srv/sonora/deploy/sonora.sh db -e "SELECT id, email, role FROM users;"
+
+   # Borrar una cuenta de prueba
+   sudo /srv/sonora/deploy/sonora.sh db \
+       -e "DELETE FROM users WHERE email='prueba@correo.com';"
    ```
 
 > El registro y la indexación están cerrados por defecto **y también si la

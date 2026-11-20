@@ -550,17 +550,6 @@ fi
 ok "Instancia de nginx: $NGINX_DIR (servicio $NGINX_SERVICE)."
 ok "Sitios: $NGINX_SITES_AVAILABLE · Snippets: $SNIPPETS_DIR"
 
-# Si hay OTROS ficheros de esta instancia que ya sirven el dominio, hay que
-# avisar: dos server blocks con el mismo nombre se ignoran (gana el primero).
-others="$(grep -rl "server_name.*$DOMINIO" "$NGINX_DIR" 2>/dev/null \
-    | grep -v "^$NGINX_CONF$" | grep -v "/nginx-sonora/" | head -5 || true)"
-
-if [ -n "$others" ]; then
-    warn "Estos ficheros de $NGINX_DIR ya mencionan el dominio:"
-    printf '    %s\n' $others
-    warn "Si el sitio no responde, revisa que solo un vhost sirva $DOMINIO."
-fi
-
 install -m 644 "$APP_DIR/deploy/nginx/snippets/sonora-fastcgi.conf" \
     "$SNIPPETS_DIR/sonora-fastcgi.conf"
 install -m 644 "$APP_DIR/deploy/nginx/snippets/security-headers.conf" \
@@ -578,6 +567,17 @@ sed -i "s|include /etc/nginx/fastcgi_params;|include $FASTCGI_PARAMS;|" \
     "$SNIPPETS_DIR/sonora-fastcgi.conf"
 
 NGINX_CONF="$NGINX_SITES_AVAILABLE/$DOMINIO.conf"
+
+# Si hay OTROS ficheros de esta instancia que ya sirven el dominio, hay que
+# avisar: dos server blocks con el mismo nombre se ignoran (gana el primero).
+others="$(grep -rl "server_name.*$DOMINIO" "$NGINX_DIR" 2>/dev/null \
+    | grep -v "^$NGINX_CONF$" | grep -v "/nginx-sonora/" | head -5 || true)"
+
+if [ -n "$others" ]; then
+    warn "Estos ficheros de $NGINX_DIR ya mencionan el dominio:"
+    printf '    %s\n' $others
+    warn "Si el sitio no responde, revisa que solo un vhost sirva $DOMINIO."
+fi
 
 # --- Adminer: ¿se puede y se quiere? ---------------------------------------
 # Es una puerta abierta a la base de datos: solo si el servidor tiene Adminer
@@ -714,6 +714,12 @@ else
 fi
 
 # --- 10. Tareas programadas --------------------------------------------------
+
+# Utilidad de administración: rutas absolutas para que los comandos
+# funcionen desde cualquier directorio.
+install -m 755 "$APP_DIR/deploy/sonora.sh" "$DEPLOY_DIR/deploy/sonora.sh"
+ok "Utilidad de administración: $DEPLOY_DIR/deploy/sonora.sh"
+
 if [ "$SKIP_CRON" -eq 1 ]; then
     warn "Tareas programadas omitidas (--skip-cron)."
 else
@@ -766,6 +772,7 @@ resolve="--resolve ${DOMINIO}:443:127.0.0.1"
 
 check_url() {
     local url="$1" label="$2"
+    local ok_codes="${3:-200}"
 
     if ! command -v curl >/dev/null 2>&1; then
         warn "curl no está disponible: no se puede comprobar $label."
@@ -775,17 +782,18 @@ check_url() {
     local status
     status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 $resolve "$url" 2>/dev/null || echo '(sin respuesta)')"
 
-    if [ "$status" = "200" ]; then
-        ok "$label responde 200."
+    if printf '%s' "$ok_codes" | grep -qx "$status"; then
+        ok "$label responde $status."
     else
-        warn "$label devuelve '$status'."
+        warn "$label devuelve '$status' (se esperaba $ok_codes)."
     fi
 }
 
 check_url "https://$DOMINIO/" "La SPA"
 check_url "https://$DOMINIO/api/v1/health" "La API"
 check_url "https://$DOMINIO/robots.txt" "robots.txt"
-check_url "https://$DOMINIO/sanctum/csrf-cookie" "La cookie CSRF"
+# Sanctum responde 204 (sin contenido) al pedir la cookie CSRF: es correcto.
+check_url "https://$DOMINIO/sanctum/csrf-cookie" "La cookie CSRF" "200|204"
 
 if command -v curl >/dev/null 2>&1; then
     robots="$(curl -fsS --max-time 15 $resolve "https://$DOMINIO/robots.txt" 2>/dev/null || echo '')"
@@ -824,6 +832,11 @@ $(cd "$APP_DIR" && $DOCKER compose --env-file backend/.env.production -f docker-
 
   Estado del sistema:
     $DEPLOY_DIR/deploy/monitor.sh
+
+  Administración (rutas absolutas, funciona desde cualquier directorio):
+    sudo $DEPLOY_DIR/deploy/sonora.sh artisan <comando>
+    sudo $DEPLOY_DIR/deploy/sonora.sh db -e "SELECT * FROM users;"
+    sudo $DEPLOY_DIR/deploy/sonora.sh compose ps
 
   Primer arranque:
     1. Entra en https://$DOMINIO/login con la cuenta de administrador.

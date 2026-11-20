@@ -111,12 +111,40 @@ autenticación están en
 **Primer arranque** (crear la cuenta de administrador):
 
 ```bash
-cd /srv/sonora/app && sudo docker compose --env-file backend/.env.production \
-  -f docker-compose.prod.yml exec app php artisan sonora:create-admin \
-  --email=tu@correo.com
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:create-admin \
+  --email=tu@correo.com --name="Administrador"
 ```
 
 Después, entra en `/admin` para registrar usuarios y revisar los ajustes.
+
+---
+
+## Administración del servidor
+
+El helper `sonora.sh` resuelve **todas** las rutas de forma absoluta, así que
+funciona desde cualquier directorio (si ejecutas `docker compose` a mano desde
+`~`, compose busca `/backend/.env.production` y falla):
+
+```bash
+# Comandos de artisan dentro del contenedor de producción
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+  --email=viejo@correo.com --new-email=nuevo@correo.com
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:create-admin \
+  --email=admin@ejemplo.com
+
+# Cliente de MariaDB (con las credenciales del .env.production)
+sudo /srv/sonora/deploy/sonora.sh db -e "SELECT email, role FROM users;"
+sudo /srv/sonora/deploy/sonora.sh db -e "DELETE FROM users WHERE email='prueba@correo.com';"
+
+# Compose y logs
+sudo /srv/sonora/deploy/sonora.sh compose ps
+sudo /srv/sonora/deploy/sonora.sh logs app
+```
+
+| Comando | Qué hace |
+|---|---|
+| `sonora:create-admin` | Crea la primera cuenta de administrador |
+| `sonora:update-user` | Cambia el correo, nombre, contraseña o rol de una cuenta |
 
 ---
 

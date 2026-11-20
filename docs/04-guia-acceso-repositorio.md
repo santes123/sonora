@@ -362,6 +362,27 @@ Opciones útiles al actualizar:
 | `--install-cron` | Reinstalar las tareas programadas (por defecto se conservan) |
 | `--fpm-port PUERTO` | Cambiar el puerto de PHP-FPM (por defecto 9001) |
 
+### Administrar el sitio después de desplegar
+
+El despliegue deja instalado `/srv/sonora/deploy/sonora.sh`, que resuelve todas
+las rutas de forma absoluta (así funciona desde cualquier directorio, que es lo
+que rompe cuando se lanza `docker compose` a mano desde `~`):
+
+```bash
+# Comandos de artisan
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+  --email=viejo@correo.com --new-email=nuevo@correo.com
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:create-admin \
+  --email=admin@ejemplo.com
+
+# Base de datos (con las credenciales del .env.production)
+sudo /srv/sonora/deploy/sonora.sh db -e "SELECT email, role FROM users;"
+
+# Compose y logs
+sudo /srv/sonora/deploy/sonora.sh compose ps
+sudo /srv/sonora/deploy/sonora.sh logs app
+```
+
 Actualizar **sin** redesplegar todo (reconstruye solo lo que cambia):
 
 ```bash
