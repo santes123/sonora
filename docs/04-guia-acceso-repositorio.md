@@ -346,11 +346,21 @@ Siempre el mismo comando, según el método que uses:
 ```bash
 # Método 1 (token en cada ejecución)
 sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
-  /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
+  bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
 
 # Método 2 (credenciales guardadas) o Método 3 (SSH)
-sudo /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git
+sudo bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git
 ```
+
+Opciones útiles al actualizar:
+
+| Opción | Para qué |
+|---|---|
+| `--skip-build` | No reconstruir imágenes (solo si no cambió el código) |
+| `--skip-spa` | No publicar la SPA (la publicas tú) |
+| `--install-nginx` | Reinstalar el vhost de nginx (por defecto se conserva el que haya) |
+| `--install-cron` | Reinstalar las tareas programadas (por defecto se conservan) |
+| `--fpm-port PUERTO` | Cambiar el puerto de PHP-FPM (por defecto 9001) |
 
 Actualizar **sin** redesplegar todo (reconstruye solo lo que cambia):
 

@@ -39,6 +39,9 @@ Opciones útiles:
 | `--db-password CLAVE` | Fijar la contraseña de MariaDB (si no, se genera) |
 | `--fpm-port PUERTO` | Puerto del host para PHP-FPM (por defecto **9001**) |
 | `--no-adminer` | No instalar el bloque de Adminer en nginx |
+| `--install-nginx` | Reinstalar el vhost de nginx (por defecto se conserva el que ya haya) |
+| `--install-cron` | Reinstalar las tareas programadas (por defecto se conservan) |
+| `--skip-spa` | No publicar la SPA (la publicas tú) |
 | `--skip-build` | No reconstruir imágenes (despliegue rápido) |
 | `--skip-cron` | No instalar las tareas programadas |
 
@@ -51,6 +54,20 @@ datos y los comandos para actualizar, hacer backup y revisar el estado.
 
 > El script es **idempotente**: se puede volver a ejecutar para actualizar.
 > No toca `backend/.env.production` si ya existe (solo rellena lo que falta).
+
+### Qué hace el script después de levantar los contenedores
+
+| Paso | Qué hace | ¿Es idempotente? |
+|---|---|---|
+| 1. Publicar la SPA | Copia la SPA compilada de `sonora-web:prod` a la raíz web. Solo borra los ficheros de la SPA; `.well-known/` y lo del panel quedan intactos | Sí ( `--skip-spa` lo omite) |
+| 2. nginx | Instala los snippets (y fija el puerto de PHP-FPM), instala el vhost **solo si no existe**, habilita el sitio, `nginx -t` y recarga | Sí ( `--install-nginx` lo reinstala) |
+| 3. TLS | Comprueba que el certificado siga en `/etc/letsencrypt/live/...` | Sí (no toca certbot) |
+| 4. Tareas | Instala cron (backup diario, monitor, mantenimiento) y logrotate | Sí ( `--install-cron` los reinstala) |
+| 5. Verificación | Comprueba contra el vhost real: SPA, API, `robots.txt` y cookie CSRF | Sí |
+
+Los pasos 1 y 2 son los únicos que tocan el servidor "por fuera" de Docker, y
+los dos se pueden desactivar o dejar de aplicar según lo que quieras
+configurar a mano.
 
 ---
 
@@ -222,10 +239,17 @@ curl -s http://127.0.0.1:8080/api/v1/health
 ### Publicar la SPA
 
 El nginx del host sirve la SPA desde la raíz web del panel
-(`/var/www/site-music-antoniogmport-5de994/htdocs`). Se extrae de la imagen
-`sonora-web`:
+(`/var/www/site-music-antoniogmport-5de994/htdocs`). La SPA compilada viaja
+dentro de la imagen `sonora-web:prod`, que **hay que construir aparte**: el
+servicio `web` está en el perfil `nginx-docker` (en producción ese contenedor
+no se levanta, porque el TLS lo termina el nginx del host).
 
 ```bash
+# Construir la imagen del frontend (solo la primera vez y en cada despliegue)
+docker compose --env-file backend/.env.production -f docker-compose.prod.yml \
+    --profile nginx-docker build web
+
+# Extraer la SPA a la raíz web
 docker create --name sonora-web-extract sonora-web:prod
 docker cp sonora-web-extract:/usr/share/nginx/html/. \
         /var/www/site-music-antoniogmport-5de994/htdocs/
@@ -233,9 +257,15 @@ docker rm sonora-web-extract
 ```
 
 En cada despliegue hay que repetirlo (los assets llevan hash: si no se copian,
-la SPA seguirá pidiendo los ficheros antiguos). `deploy.sh` lo hace y conserva
-`.well-known/`, donde el panel y la renovación del certificado dejan el reto
-de ACME.
+la SPA seguirá pidiendo los ficheros antiguos).
+
+`deploy.sh` lo hace automáticamente y **solo borra los ficheros que genera la
+SPA** (`assets/`, `icons/`, `index.html`, `sw.js`, `registerSW.js`,
+`manifest.webmanifest`, `favicon.svg`). El resto de la raíz web no se toca:
+`.well-known/` (donde el panel y la renovación del certificado dejan el reto
+de ACME) y cualquier fichero del panel siguen intactos.
+
+Si prefieres publicar la SPA a mano: `--skip-spa`.de ACME.
 
 ---
 
@@ -251,6 +281,17 @@ sudo ln -sf /etc/nginx/sites-available/music.antoniogmportfolio.online.conf \
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+> **El vhost se instala una sola vez.** `deploy.sh` copia el fichero del
+> repositorio a `/etc/nginx/sites-available/` **solo si no existe**: si ya
+> está, lo conserva (por si lo has editado a mano: límites, reglas propias,
+> certificados). Para reinstalarlo desde el repositorio: `--install-nginx`.
+>
+> Lo que sí se actualiza siempre es el snippet
+> `/etc/nginx/snippets/sonora-fastcgi.conf`, porque fija el puerto de PHP-FPM
+> (`fastcgi_pass`): si no coincide con el que publica Docker, la API
+> respondería 502. Ese snippet es generado por el proyecto, no es configuración
+> manual.
 
 ### El certificado
 

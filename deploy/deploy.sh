@@ -36,8 +36,12 @@
 #   --db-password CLAVE  contraseña de MariaDB (si no se indica, se genera)
 #   --fpm-port PUERTO    puerto del host para PHP-FPM (por defecto 9001)
 #   --no-adminer         no instalar el bloque de Adminer en nginx
+#   --install-nginx     reinstalar el vhost de nginx (por defecto se conserva
+#                        el que ya haya, por si está editado a mano)
 #   --skip-build         no reconstruir las imágenes
 #   --skip-cron          no instalar las tareas programadas
+#   --skip-spa           no publicar la SPA (la publicas tú)
+#   --install-cron      reinstalar las tareas programadas
 #
 # Variables de entorno alternativas: DOMINIO, REPO, REPO_TOKEN, RAMA, APP_KEY,
 # DB_PASSWORD, DEPLOY_DIR, WEB_ROOT, LOG_DIR, MEDIA_DIR.
@@ -63,6 +67,9 @@ BIND_MARIADB_PORT="${BIND_MARIADB_PORT:-3307}"
 BIND_REDIS_PORT="${BIND_REDIS_PORT:-6380}"
 SKIP_BUILD=0
 SKIP_CRON=0
+SKIP_SPA=0
+INSTALL_NGINX=0
+INSTALL_CRON=0
 WITH_ADMINER=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -84,8 +91,11 @@ while [ $# -gt 0 ]; do
         --db-password) DB_PASSWORD="$2"; shift 2 ;;
         --fpm-port) FPM_PORT="$2"; shift 2 ;;
         --no-adminer) WITH_ADMINER=0; shift ;;
+        --install-nginx) INSTALL_NGINX=1; shift ;;
+        --install-cron) INSTALL_CRON=1; shift ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --skip-cron) SKIP_CRON=1; shift ;;
+        --skip-spa) SKIP_SPA=1; shift ;;
         -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
         *) echo "Opción desconocida: $1" >&2; exit 1 ;;
     esac
@@ -299,6 +309,15 @@ else
     $DOCKER compose --env-file backend/.env.production -f docker-compose.prod.yml build
     ok "Imágenes construidas."
 
+    # La imagen del frontend (sonora-web:prod) lleva la SPA compilada: la
+    # publica el nginx del host. El servicio `web` está en el perfil
+    # `nginx-docker`, así que hay que activarlo explícitamente para
+    # construirlo (en producción ese contenedor no se levanta).
+    $DOCKER compose --env-file backend/.env.production -f docker-compose.prod.yml \
+        --profile nginx-docker build web \
+        || die "No se pudo construir la imagen del frontend (sonora-web:prod)."
+    ok "Imagen del frontend construida."
+
     if [ "$APP_KEY" = "PENDIENTE" ]; then
         APP_KEY="$($DOCKER run --rm --entrypoint php sonora-app:prod artisan key:generate --show 2>/dev/null \
             | sed -e 's/<[^>]*>//g' | tr -d '\r')"
@@ -392,21 +411,39 @@ for i in $(seq 1 30); do
 done
 
 # --- 7. Publicar la SPA -----------------------------------------------------
-log "Publicando la SPA en $WEB_ROOT"
+if [ "$SKIP_SPA" -eq 1 ]; then
+    warn "Publicación de la SPA omitida (--skip-spa)."
+else
+    log "Publicando la SPA en $WEB_ROOT"
 
-# Se conserva .well-known: es donde el panel y la renovación del certificado
-# dejan el reto de ACME.
-find "$WEB_ROOT" -mindepth 1 -maxdepth 1 ! -name '.well-known' -exec rm -rf {} + 2>/dev/null || true
+    # Solo se borran los ficheros que genera la SPA. El resto del web root
+    # (`.well-known` del panel, `index.php` de Adminer, etc.) se deja intacto:
+    # ese directorio lo comparte el panel de hosting con el sitio.
+    rm -rf "$WEB_ROOT/assets" "$WEB_ROOT/icons" 2>/dev/null || true
+    rm -f "$WEB_ROOT/index.html" "$WEB_ROOT/sw.js" "$WEB_ROOT/registerSW.js" \
+        "$WEB_ROOT/manifest.webmanifest" "$WEB_ROOT/favicon.svg" "$WEB_ROOT/50x.html" \
+        2>/dev/null || true
 
-container_id="$($DOCKER create sonora-web:prod)"
-$DOCKER cp "$container_id:/usr/share/nginx/html/." "$WEB_ROOT/"
-$DOCKER rm "$container_id" >/dev/null
+    if ! $DOCKER image inspect sonora-web:prod >/dev/null 2>&1; then
+        if [ "$SKIP_BUILD" -eq 1 ]; then
+            die "Falta la imagen sonora-web:prod y se pidió --skip-build. Quita --skip-build o construye la imagen."
+        fi
+        warn "Falta la imagen sonora-web:prod: se construye ahora (incluye el build del frontend)."
+        $DOCKER compose --env-file backend/.env.production -f docker-compose.prod.yml \
+            --profile nginx-docker build web \
+            || die "No se pudo construir la imagen del frontend (sonora-web:prod)."
+    fi
 
-if id -u www-data >/dev/null 2>&1; then
-    chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
+    container_id="$($DOCKER create sonora-web:prod)"
+    $DOCKER cp "$container_id:/usr/share/nginx/html/." "$WEB_ROOT/"
+    $DOCKER rm "$container_id" >/dev/null
+
+    if id -u www-data >/dev/null 2>&1; then
+        chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
+    fi
+    chmod -R a+rX "$WEB_ROOT" 2>/dev/null || true
+    ok "SPA publicada."
 fi
-chmod -R a+rX "$WEB_ROOT" 2>/dev/null || true
-ok "SPA publicada."
 
 # --- 8. nginx del host -------------------------------------------------------
 log "Configurando nginx"
@@ -424,19 +461,29 @@ sed -i -E "s|fastcgi_pass 127\.0\.0\.1:[0-9]+;|fastcgi_pass 127.0.0.1:${FPM_PORT
 grep -q "fastcgi_pass 127.0.0.1:${FPM_PORT};" /etc/nginx/snippets/sonora-fastcgi.conf \
     || die "No se pudo fijar el puerto de PHP-FPM ($FPM_PORT) en el snippet de nginx."
 
-install -m 644 "$APP_DIR/deploy/nginx/music.antoniogmportfolio.online.conf" \
-    "/etc/nginx/sites-available/$DOMINIO.conf"
-
 NGINX_CONF="/etc/nginx/sites-available/$DOMINIO.conf"
 
-# La configuración generada trae los valores por defecto del servidor: se
-# adaptan a los reales (dominio, raíz web, logs y medios).
-sed -i \
-    -e "s|music\.antoniogmportfolio\.online|$DOMINIO|g" \
-    -e "s|/var/www/site-music-antoniogmport-5de994/htdocs|$WEB_ROOT|g" \
-    -e "s|/var/www/site-music-antoniogmport-5de994/logs|$LOG_DIR|g" \
-    -e "s|/srv/sonora/media|$MEDIA_DIR|g" \
-    "$NGINX_CONF"
+# El vhost se instala UNA vez. Si ya existe se conserva: puede estar editado
+# a mano (límites, certificados, reglas propias). Con --install-nginx se
+# reinstala desde el repositorio.
+if [ -f "$NGINX_CONF" ] && [ "$INSTALL_NGINX" -eq 0 ]; then
+    ok "Configuración de nginx conservada ($NGINX_CONF)."
+    ok "Para reinstalarla desde el repositorio: --install-nginx"
+else
+    vhost_src="$APP_DIR/deploy/nginx/$DOMINIO.conf"
+    [ -f "$vhost_src" ] || vhost_src="$APP_DIR/deploy/nginx/music.antoniogmportfolio.online.conf"
+    install -m 644 "$vhost_src" "$NGINX_CONF"
+
+    # La configuración generada trae los valores por defecto del servidor: se
+    # adaptan a los reales (dominio, raíz web, logs y medios).
+    sed -i \
+        -e "s|music\.antoniogmportfolio\.online|$DOMINIO|g" \
+        -e "s|/var/www/site-music-antoniogmport-5de994/htdocs|$WEB_ROOT|g" \
+        -e "s|/var/www/site-music-antoniogmport-5de994/logs|$LOG_DIR|g" \
+        -e "s|/srv/sonora/media|$MEDIA_DIR|g" \
+        "$NGINX_CONF"
+    ok "Configuración de nginx instalada en $NGINX_CONF."
+fi
 
 # HTTP/2: `http2 on;` existe desde nginx 1.25.1. En versiones anteriores la
 # opción va en la propia directiva `listen`.
@@ -485,10 +532,21 @@ if [ "$SKIP_CRON" -eq 1 ]; then
 else
     log "Instalando las tareas programadas"
 
-    install -m 644 "$APP_DIR/deploy/cron/sonora-backup" /etc/cron.d/sonora-backup
-    install -m 644 "$APP_DIR/deploy/cron/sonora-monitor" /etc/cron.d/sonora-monitor
-    install -m 644 "$APP_DIR/deploy/cron/sonora-maintenance" /etc/cron.d/sonora-maintenance
-    install -m 644 "$APP_DIR/deploy/logrotate/sonora" /etc/logrotate.d/sonora
+    # Igual que con el vhost de nginx: si ya existen, se conservan por si
+    # están editadas a mano. Con --install-cron se reinstalan.
+    install_cron_file() {
+        local src="$1" dest="$2"
+        if [ -f "$dest" ] && [ "$INSTALL_CRON" -eq 0 ]; then
+            ok "Conservado: $dest"
+            return 0
+        fi
+        install -m 644 "$src" "$dest"
+    }
+
+    install_cron_file "$APP_DIR/deploy/cron/sonora-backup" /etc/cron.d/sonora-backup
+    install_cron_file "$APP_DIR/deploy/cron/sonora-monitor" /etc/cron.d/sonora-monitor
+    install_cron_file "$APP_DIR/deploy/cron/sonora-maintenance" /etc/cron.d/sonora-maintenance
+    install_cron_file "$APP_DIR/deploy/logrotate/sonora" /etc/logrotate.d/sonora
     chmod 644 /etc/cron.d/sonora-*
 
     install -m 755 "$APP_DIR/deploy/backup.sh" "$DEPLOY_DIR/deploy/backup.sh"

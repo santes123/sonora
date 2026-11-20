@@ -88,6 +88,11 @@ sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
 > (`sudo bash /srv/sonora/app/deploy/deploy.sh ...`) o dale permiso con
 > `sudo chmod +x /srv/sonora/app/deploy/*.sh`.
 
+**El script no pisa tu configuración manual**: el vhost de nginx y las tareas
+programadas se instalan **solo la primera vez**; si ya existen, se conservan.
+Para reinstalarlos: `--install-nginx` y `--install-cron`. Y si prefieres
+publicar la SPA a mano: `--skip-spa`.
+
 **Puertos y contenedores**: el stack publica PHP-FPM en `127.0.0.1:9001`
 (opción `--fpm-port` para cambiarlo), MariaDB en `3307` y Redis en `6380`.
 `deploy.sh` comprueba que estén libres **antes** de construir las imágenes y
