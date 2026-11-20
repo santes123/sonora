@@ -15,14 +15,14 @@ responde.
 
 ```bash
 # En el servidor (el script clona o actualiza el repositorio):
-sudo ./deploy/deploy.sh \
-    --repo https://github.com/TU_USUARIO/sonora.git
+sudo /srv/sonora/app/deploy/deploy.sh \
+    --repo https://github.com/santes123/sonora.git
 ```
 
 > **Repositorio privado:** hay cuatro formas de autenticarse (HTTPS con token,
 > credenciales guardadas en el servidor, SSH con deploy key o repositorio
-> público). Están explicadas paso a paso en
-> [04-guia-acceso-repositorio.md](04-guia-acceso-repositorio.md).
+> público). Están explicadas paso a paso, con los comandos exactos y las rutas
+> reales, en [04-guia-acceso-repositorio.md](04-guia-acceso-repositorio.md).
 
 Opciones útiles:
 

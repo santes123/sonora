@@ -70,22 +70,29 @@ las imágenes, levanta el stack, instala nginx, publica la SPA y verifica que to
 responde):
 
 ```bash
-# Repositorio privado por HTTPS (el token no queda en .git/config)
+# 1. Guardar el token de GitHub en el servidor (no pasa por el historial)
+sudo sh -c 'umask 077; read -rs TOKEN; printf "%s" "$TOKEN" > /root/.sonora-token; echo'
+
+# 2. Clonar el repositorio
+sudo sh -c 'T=$(cat /root/.sonora-token); git clone "https://x-access-token:${T}@github.com/santes123/sonora.git" /srv/sonora/app'
+
+# 3. Desplegar (el token no queda en .git/config)
 sudo sh -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
-  ./deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
+  /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
 ```
 
 > El certificado TLS ya existe en el servidor y se renueva solo: el script
 > **no** lanza certbot, solo comprueba que el certificado siga ahí.
 
-Todas las opciones y los cuatro métodos de autenticación están en
+Todos los comandos, las rutas reales del servidor y los cuatro métodos de
+autenticación están en
 [docs/04-guia-acceso-repositorio.md](docs/04-guia-acceso-repositorio.md).
 
 **Primer arranque** (crear la cuenta de administrador):
 
 ```bash
-cd /srv/sonora/app/backend
-docker compose --env-file .env.production exec app php artisan sonora:create-admin \
+cd /srv/sonora/app && sudo docker compose --env-file backend/.env.production \
+  -f docker-compose.prod.yml exec app php artisan sonora:create-admin \
   --email=tu@correo.com
 ```
 

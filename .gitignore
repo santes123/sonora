@@ -25,6 +25,9 @@
 # Claves de despliegue (deploy key SSH y similares)
 /.deploy/
 
+# Tokens de GitHub guardados en la raíz (nunca versionar)
+/*token*.txt
+
 # Builds
 /frontend/dist/
 /frontend/dev-dist/

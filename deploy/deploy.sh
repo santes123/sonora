@@ -137,6 +137,7 @@ clone_url="$REPO"
 if [ -n "$REPO_TOKEN" ] && [ -n "$REPO" ]; then
     clone_url="$(printf '%s' "$REPO" | sed -e "s|^https://|https://x-access-token:${REPO_TOKEN}@|")"
 fi
+fetch_url="$clone_url"
 
 # Ayuda cuando git no puede autenticarse contra el repositorio.
 auth_help() {
@@ -169,11 +170,13 @@ clean_remote() {
 
 if [ -n "$REPO" ]; then
     if [ -d "$APP_DIR/.git" ]; then
-        fetch_url="$clone_url"
-        git -C "$APP_DIR" fetch --all --tags "$fetch_url" \
+        # Se descarga SOLO desde la URL con token: traer `--all` intentaría
+        # también el remoto limpio (sin token) y fallaría en repos privados.
+        git -C "$APP_DIR" fetch --tags --force "$fetch_url" \
+            "+refs/heads/$RAMA:refs/remotes/origin/$RAMA" \
             || { auth_help; die "No se pudo descargar el repositorio. Revisa --repo y --repo-token."; }
-        git -C "$APP_DIR" checkout "$RAMA"
-        git -C "$APP_DIR" reset --hard "origin/$RAMA" 2>/dev/null || git -C "$APP_DIR" pull --ff-only origin "$RAMA"
+        git -C "$APP_DIR" checkout -B "$RAMA" "refs/remotes/origin/$RAMA"
+        git -C "$APP_DIR" reset --hard "refs/remotes/origin/$RAMA"
         # El remoto se deja sin token.
         clean_remote
     else
