@@ -80,12 +80,24 @@ archivo es el token.
 
 ### 2.2 Guardar el token en el servidor (sin que pase por el historial)
 
+**Opción A — escribirlo a mano:**
+
 ```bash
 sudo sh -c 'umask 077; read -rs TOKEN; printf "%s" "$TOKEN" > /root/.sonora-token; echo'
 ```
 
 Pide el token y lo guarda en `/root/.sonora-token` con permisos `600`
 (solo root puede leerlo).
+
+**Opción B — subir el archivo que ya tienes** (`fine-access-token-github.txt`
+en tu equipo) desde el equipo:
+
+```bash
+scp fine-access-token-github.txt root@music.antoniogmportfolio.online:/tmp/
+ssh root@music.antoniogmportfolio.online 'sudo install -m 600 /tmp/fine-access-token-github.txt /root/.sonora-token && rm -f /tmp/fine-access-token-github.txt'
+```
+
+> Si tu usuario de SSH no es `root`, sustitúyelo en las dos líneas.
 
 ### 2.3 Clonar el repositorio
 
