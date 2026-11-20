@@ -38,6 +38,8 @@ Opciones útiles:
 | `--app-key CLAVE` | Fijar el `APP_KEY` (si no, se genera y se guarda) |
 | `--db-password CLAVE` | Fijar la contraseña de MariaDB (si no, se genera) |
 | `--fpm-port PUERTO` | Puerto del host para PHP-FPM (por defecto **9001**) |
+| `--nginx-dir RUTA` | Configuración de nginx a usar (por defecto se detecta) |
+| `--nginx-service NOMBRE` | Servicio systemd de nginx (por defecto se detecta) |
 | `--no-adminer` | No instalar el bloque de Adminer en nginx |
 | `--install-nginx` | Reinstalar el vhost de nginx (por defecto se conserva el que ya haya) |
 | `--install-cron` | Reinstalar las tareas programadas (por defecto se conservan) |
@@ -292,6 +294,36 @@ sudo nginx -t && sudo systemctl reload nginx
 > (`fastcgi_pass`): si no coincide con el que publica Docker, la API
 > respondería 502. Ese snippet es generado por el proyecto, no es configuración
 > manual.
+
+### Si el servidor tiene varias instancias de nginx
+
+Los servidores de hosting suelen tener **dos** nginx: el estándar
+(`/etc/nginx/nginx.conf`) y el del panel (`nginx-second`, con su propio
+`/etc/nginx-second/nginx.conf` y su servicio `nginx-second`). El sitio lo
+sirve el del panel.
+
+`deploy.sh` **detecta cuál usar**, por este orden:
+
+1. La instancia cuya configuración ya menciona el dominio.
+2. La instancia cuyo servicio systemd está activo.
+3. La estándar (`/etc/nginx`).
+
+Y trabaja con esa instancia en todo: instala el vhost en sus `sites-available`,
+lo habilita en `sites-enabled`, comprueba la configuración con
+`nginx -t -c <su nginx.conf>` y recarga **su** servicio. Los snippets del
+proyecto van a `<dir>/nginx-sonora/`, un directorio propio: si vivieran en
+`conf.d/`, el `include` con comodín del nginx principal los arrastraría al
+contexto `http`, donde `fastcgi_pass` no es válido.
+
+Se puede forzar:
+
+```bash
+sudo bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git \
+    --nginx-dir /etc/nginx-second --nginx-service nginx-second
+```
+
+Si una ejecución anterior dejó el vhost en la otra instancia, se retira de
+allí automáticamente para no duplicar el dominio.
 
 ### El certificado
 

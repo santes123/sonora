@@ -35,6 +35,9 @@
 #   --app-key CLAVE      APP_KEY de Laravel (si no se indica, se genera)
 #   --db-password CLAVE  contraseña de MariaDB (si no se indica, se genera)
 #   --fpm-port PUERTO    puerto del host para PHP-FPM (por defecto 9001)
+#   --nginx-dir RUTA     configuración de nginx a usar (por defecto se detecta:
+#                        /etc/nginx-second, /etc/nginx, ...)
+#   --nginx-service NOMBRE  servicio systemd de nginx (por defecto se detecta)
 #   --no-adminer         no instalar el bloque de Adminer en nginx
 #   --install-nginx     reinstalar el vhost de nginx (por defecto se conserva
 #                        el que ya haya, por si está editado a mano)
@@ -65,6 +68,10 @@ DB_PASSWORD="${DB_PASSWORD:-}"
 FPM_PORT="${FPM_PORT:-9001}"
 BIND_MARIADB_PORT="${BIND_MARIADB_PORT:-3307}"
 BIND_REDIS_PORT="${BIND_REDIS_PORT:-6380}"
+# Instancia de nginx a usar. Vacío = detección automática (puede haber varias:
+# la del panel "nginx-second", la estándar, etc.).
+NGINX_DIR_OVERRIDE="${NGINX_DIR:-}"
+NGINX_SERVICE_OVERRIDE="${NGINX_SERVICE:-}"
 SKIP_BUILD=0
 SKIP_CRON=0
 SKIP_SPA=0
@@ -90,6 +97,8 @@ while [ $# -gt 0 ]; do
         --app-key) APP_KEY="$2"; shift 2 ;;
         --db-password) DB_PASSWORD="$2"; shift 2 ;;
         --fpm-port) FPM_PORT="$2"; shift 2 ;;
+        --nginx-dir) NGINX_DIR_OVERRIDE="$2"; shift 2 ;;
+        --nginx-service) NGINX_SERVICE_OVERRIDE="$2"; shift 2 ;;
         --no-adminer) WITH_ADMINER=0; shift ;;
         --install-nginx) INSTALL_NGINX=1; shift ;;
         --install-cron) INSTALL_CRON=1; shift ;;
@@ -448,20 +457,98 @@ fi
 # --- 8. nginx del host -------------------------------------------------------
 log "Configurando nginx"
 
-install -d -m 755 /etc/nginx/snippets
+# El servidor puede tener VARIAS instancias de nginx (por ejemplo, la del
+# panel de hosting: "nginx-second" con su propio /etc/nginx-second/nginx.conf).
+# Hay que tocar la que sirve el dominio, no la estándar.
+#
+# Se elige, por este orden:
+#   1. La instancia cuya configuración ya menciona el dominio.
+#   2. La instancia cuyo servicio systemd está activo.
+#   3. La estándar (/etc/nginx).
+detect_nginx() {
+    local dir svc
+
+    for dir in /etc/nginx-second /etc/nginx /usr/local/nginx; do
+        [ -f "$dir/nginx.conf" ] || continue
+        svc="$(basename "$dir")"
+        if grep -rq "$DOMINIO" "$dir" 2>/dev/null; then
+            NGINX_DIR="$dir"
+            NGINX_SERVICE="$svc"
+            return 0
+        fi
+    done
+
+    for dir in /etc/nginx-second /etc/nginx; do
+        [ -f "$dir/nginx.conf" ] || continue
+        svc="$(basename "$dir")"
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            NGINX_DIR="$dir"
+            NGINX_SERVICE="$svc"
+            return 0
+        fi
+    done
+
+    NGINX_DIR="/etc/nginx"
+    NGINX_SERVICE="nginx"
+}
+
+if [ -n "$NGINX_DIR_OVERRIDE" ]; then
+    NGINX_DIR="$NGINX_DIR_OVERRIDE"
+    NGINX_SERVICE="${NGINX_SERVICE_OVERRIDE:-$(basename "$NGINX_DIR")}"
+    [ -f "$NGINX_DIR/nginx.conf" ] || die "No existe $NGINX_DIR/nginx.conf"
+else
+    detect_nginx
+fi
+
+# Sitios y snippets. Los snippets van a un directorio PROPIO (nginx.<dominio>)
+# para que el `include` con comodín del nginx principal no los arrastre al
+# contexto http (donde fastcgi_pass no es válido).
+if [ -d "$NGINX_DIR/sites-available" ]; then
+    NGINX_SITES_AVAILABLE="$NGINX_DIR/sites-available"
+    NGINX_SITES_ENABLED="$NGINX_DIR/sites-enabled"
+else
+    NGINX_SITES_AVAILABLE="$NGINX_DIR/conf.d"
+    NGINX_SITES_ENABLED="$NGINX_DIR/conf.d"
+fi
+
+SNIPPETS_DIR="$NGINX_DIR/nginx-sonora"
+mkdir -p "$NGINX_SITES_ENABLED" "$SNIPPETS_DIR"
+
+# fastcgi_params: el de la propia instancia si existe; si no, el del paquete.
+FASTCGI_PARAMS="/etc/nginx/fastcgi_params"
+[ -f "$NGINX_DIR/fastcgi_params" ] && FASTCGI_PARAMS="$NGINX_DIR/fastcgi_params"
+
+ok "Instancia de nginx: $NGINX_DIR (servicio $NGINX_SERVICE)."
+ok "Sitios: $NGINX_SITES_AVAILABLE · Snippets: $SNIPPETS_DIR"
+
+# Si hay OTROS ficheros de esta instancia que ya sirven el dominio, hay que
+# avisar: dos server blocks con el mismo nombre se ignoran (gana el primero).
+others="$(grep -rl "server_name.*$DOMINIO" "$NGINX_DIR" 2>/dev/null \
+    | grep -v "^$NGINX_CONF$" | grep -v "/nginx-sonora/" | head -5 || true)"
+
+if [ -n "$others" ]; then
+    warn "Estos ficheros de $NGINX_DIR ya mencionan el dominio:"
+    printf '    %s\n' $others
+    warn "Si el sitio no responde, revisa que solo un vhost sirva $DOMINIO."
+fi
+
 install -m 644 "$APP_DIR/deploy/nginx/snippets/sonora-fastcgi.conf" \
-    /etc/nginx/snippets/sonora-fastcgi.conf
+    "$SNIPPETS_DIR/sonora-fastcgi.conf"
 install -m 644 "$APP_DIR/deploy/nginx/snippets/security-headers.conf" \
-    /etc/nginx/snippets/security-headers.conf
+    "$SNIPPETS_DIR/security-headers.conf"
 
 # El puerto de PHP-FPM se fija aquí (el del host, no el 9000 interno del
 # contenedor): si no coincide con el que publica Docker, la API devuelve 502.
 sed -i -E "s|fastcgi_pass 127\.0\.0\.1:[0-9]+;|fastcgi_pass 127.0.0.1:${FPM_PORT};|" \
-    /etc/nginx/snippets/sonora-fastcgi.conf
-grep -q "fastcgi_pass 127.0.0.1:${FPM_PORT};" /etc/nginx/snippets/sonora-fastcgi.conf \
+    "$SNIPPETS_DIR/sonora-fastcgi.conf"
+grep -q "fastcgi_pass 127.0.0.1:${FPM_PORT};" "$SNIPPETS_DIR/sonora-fastcgi.conf" \
     || die "No se pudo fijar el puerto de PHP-FPM ($FPM_PORT) en el snippet de nginx."
 
-NGINX_CONF="/etc/nginx/sites-available/$DOMINIO.conf"
+# El snippet incluye fastcgi_params: se apunta al de la instancia en uso.
+sed -i "s|include /etc/nginx/fastcgi_params;|include $FASTCGI_PARAMS;|" \
+    "$SNIPPETS_DIR/sonora-fastcgi.conf"
+
+NGINX_CONF="$NGINX_SITES_AVAILABLE/$DOMINIO.conf"
 
 # El vhost se instala UNA vez. Si ya existe se conserva: puede estar editado
 # a mano (límites, certificados, reglas propias). Con --install-nginx se
@@ -472,17 +559,41 @@ if [ -f "$NGINX_CONF" ] && [ "$INSTALL_NGINX" -eq 0 ]; then
 else
     vhost_src="$APP_DIR/deploy/nginx/$DOMINIO.conf"
     [ -f "$vhost_src" ] || vhost_src="$APP_DIR/deploy/nginx/music.antoniogmportfolio.online.conf"
-    install -m 644 "$vhost_src" "$NGINX_CONF"
+
+    # Copia de seguridad por si el fichero que se sustituye tenía cambios.
+    if [ -f "$NGINX_CONF" ]; then
+        cp -a "$NGINX_CONF" "$NGINX_CONF.bak"
+        ok "Copia de seguridad: $NGINX_CONF.bak"
+    fi
+
+    install -m 644 "$vhost_src" "$NGINX_CONF" "$NGINX_CONF"
 
     # La configuración generada trae los valores por defecto del servidor: se
-    # adaptan a los reales (dominio, raíz web, logs y medios).
+    # adaptan a los reales (dominio, raíz web, logs, medios, snippets).
     sed -i \
         -e "s|music\.antoniogmportfolio\.online|$DOMINIO|g" \
         -e "s|/var/www/site-music-antoniogmport-5de994/htdocs|$WEB_ROOT|g" \
         -e "s|/var/www/site-music-antoniogmport-5de994/logs|$LOG_DIR|g" \
         -e "s|/srv/sonora/media|$MEDIA_DIR|g" \
+        -e "s|/etc/nginx/snippets|$SNIPPETS_DIR|g" \
         "$NGINX_CONF"
+
+    # El include de Adminer es relativo: con `-c /etc/nginx-second/nginx.conf`
+    # resuelve contra /etc/nginx-second, no contra /etc/nginx. Se apunta a la
+    # ruta absoluta de la instancia en uso.
+    sed -i "s|include snippets/fastcgi-php.conf;|include $NGINX_DIR/snippets/fastcgi-php.conf;|" \
+        "$NGINX_CONF"
+
     ok "Configuración de nginx instalada en $NGINX_CONF."
+fi
+
+# El vhost incluye los snippets de TLS del sistema. Si en este servidor no
+# existen, se quita el include (nginx arranca con los valores por defecto) en
+# lugar de dejar una configuración rota.
+if grep -q "include /etc/letsencrypt/options-ssl-nginx.conf;" "$NGINX_CONF" \
+    && [ ! -f "/etc/letsencrypt/options-ssl-nginx.conf" ]; then
+    sed -i '/include \/etc\/letsencrypt\/options-ssl-nginx.conf;/d' "$NGINX_CONF"
+    warn "No existe /etc/letsencrypt/options-ssl-nginx.conf: se usa la configuración TLS por defecto."
 fi
 
 # HTTP/2: `http2 on;` existe desde nginx 1.25.1. En versiones anteriores la
@@ -499,17 +610,37 @@ else
 fi
 
 # Adminer: es una puerta abierta a la base de datos. Se puede quitar.
+# Si no están los ficheros de Adminer, el snippet de PHP del panel o el socket
+# de PHP-FPM del host, el bloque se elimina: dejarlo apuntando a algo
+# inexistente rompe `nginx -t`.
 if [ "$WITH_ADMINER" -eq 0 ]; then
     sed -i '/#---BEGIN-ADMINER---/,/#---END-ADMINER---/d' "$NGINX_CONF"
     ok "Bloque de Adminer omitido."
+elif [ ! -f "/usr/share/adminer/index.php" ] \
+    || [ ! -f "$NGINX_DIR/snippets/fastcgi-php.conf" ] \
+    || [ ! -S "/run/php/php8.3-fpm.sock" ]; then
+    sed -i '/#---BEGIN-ADMINER---/,/#---END-ADMINER---/d' "$NGINX_CONF"
+    warn "Adminer no está instalado en el servidor: se omite su bloque."
 fi
 
-ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/$DOMINIO.conf"
-rm -f /etc/nginx/sites-enabled/default
+# Habilitar el sitio.
+if [ "$NGINX_SITES_AVAILABLE" != "$NGINX_SITES_ENABLED" ]; then
+    ln -sf "$NGINX_CONF" "$NGINX_SITES_ENABLED/$DOMINIO.conf"
+fi
 
-nginx -t || die "La configuración de nginx no es válida."
-systemctl reload nginx || systemctl restart nginx
-ok "nginx configurado para $DOMINIO."
+# Comprobación de la configuración con LA instancia que se está usando.
+nginx -t -c "$NGINX_DIR/nginx.conf" || die "La configuración de nginx no es válida."
+systemctl reload "$NGINX_SERVICE" || systemctl restart "$NGINX_SERVICE"
+ok "nginx ($NGINX_SERVICE) configurado para $DOMINIO."
+
+# Limpieza: si una ejecución anterior instaló el vhost en otra instancia de
+# nginx (la estándar, por ejemplo), se retira de ahí para no duplicar el
+# dominio ni dejar configs rotas.
+if [ "$NGINX_DIR" != "/etc/nginx" ] && [ -f "/etc/nginx/sites-available/$DOMINIO.conf" ]; then
+    rm -f "/etc/nginx/sites-available/$DOMINIO.conf" "/etc/nginx/sites-enabled/$DOMINIO.conf"
+    rm -rf /etc/nginx/nginx-sonora
+    ok "Vhost retirado de /etc/nginx (la instancia en uso es $NGINX_DIR)."
+fi
 
 # --- 9. TLS ------------------------------------------------------------------
 log "Comprobando el certificado"
@@ -518,7 +649,8 @@ CERT_DIR="/etc/letsencrypt/live/$DOMINIO"
 
 if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
     ok "Certificado encontrado en $CERT_DIR (se renueva solo: no se toca certbot)."
-elif [ -f "/etc/nginx/snippets/ssl-options-ssl-nginx.conf" ]; then
+elif [ -f "$NGINX_DIR/snippets/ssl-options-ssl-nginx.conf" ] \
+    || [ -f "/etc/nginx/snippets/ssl-options-ssl-nginx.conf" ]; then
     warn "No hay certificado en $CERT_DIR, pero el servidor tiene snippets de SSL de nginx."
     warn "Si el TLS lo termina otro servidor, ajusta a mano ssl_certificate en $NGINX_CONF."
 else
