@@ -369,9 +369,25 @@ pero nunca emite ni renueva nada.
 
 ### Adminer
 
-El bloque de Adminer viene aplanado (nginx no admite `location` anidados) y
-apunta al PHP-FPM del host. Es una puerta abierta a la base de datos: si no lo
-necesitas, despliega con `--no-adminer`.
+Adminer es una herramienta PHP independiente de nuestra aplicación: la ejecuta
+el **PHP-FPM del host** (socket), no el de Docker, y sirve los ficheros de
+`/usr/share/adminer/`.
+
+El bloque viene aplanado (nginx no admite `location` anidados, y el bloque
+anidado del panel no arrancaba en otras versiones). `deploy.sh` lo añade
+automáticamente **si el servidor tiene Adminer y el PHP-FPM del host**, y lo
+elimina si no está disponible (dejarlo apuntando a algo inexistente rompe
+`nginx -t`).
+
+> Es una **puerta abierta a la base de datos**: cualquiera que entre en
+> `/adminer` puede ver los datos. Si no la usas, despliega con `--no-adminer`
+> y el bloque desaparece del vhost.
+
+```bash
+# Comprobar si el servidor tiene lo necesario
+sudo ls -l /usr/share/adminer/index.php
+sudo ls -l /run/php/*.sock
+```
 
 ---
 
@@ -509,7 +525,8 @@ git pull
 docker compose --env-file backend/.env.production -f docker-compose.prod.yml build
 docker compose --env-file backend/.env.production -f docker-compose.prod.yml up -d
 docker create --name sonora-web-extract sonora-web:prod
-docker cp sonora-web-extract:/usr/share/nginx/html/. /srv/sonora/web/
+docker cp sonora-web-extract:/usr/share/nginx/html/. \
+        /var/www/site-music-antoniogmport-5de994/htdocs/web/
 docker rm sonora-web-extract
 ```
 
@@ -575,6 +592,28 @@ administración, sin tocar el servidor.
 
    Si se omite `--password`, se genera una y se muestra por pantalla (no se
    guarda en ningún sitio).
+
+1. **Cambiar el correo o la contraseña de una cuenta.** El panel da de alta
+   cuentas pero no las edita: para eso está el comando `sonora:update-user`.
+
+   ```bash
+   cd /srv/sonora/app
+   docker compose --env-file backend/.env.production -f docker-compose.prod.yml \
+       exec app php artisan sonora:update-user \
+       --email=tu@correo.com --new-email=nuevo@correo.com
+   ```
+
+   | Opción | Qué hace |
+   |---|---|
+   | `--email` | Correo **actual** de la cuenta (obligatorio) |
+   | `--new-email` | Nuevo correo |
+   | `--name` | Nuevo nombre |
+   | `--password` | Nueva contraseña (mínimo 8 caracteres) |
+   | `--reset-password` | Genera una contraseña nueva y la muestra por pantalla |
+   | `--role` | `admin` o `user` |
+
+   Si solo cambias el correo, **la contraseña no se toca**. Si el correo nuevo
+   ya existe en otra cuenta, el comando se niega y no cambia nada.
 
 2. Entrar en `https://music.antoniogmportfolio.online/login`.
 

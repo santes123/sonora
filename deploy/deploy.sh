@@ -540,6 +540,13 @@ mkdir -p "$NGINX_SITES_ENABLED" "$SNIPPETS_DIR"
 FASTCGI_PARAMS="/etc/nginx/fastcgi_params"
 [ -f "$NGINX_DIR/fastcgi_params" ] && FASTCGI_PARAMS="$NGINX_DIR/fastcgi_params"
 
+# Socket de PHP-FPM del host (lo usa Adminer, que es una app PHP aparte).
+PHP_FPM_SOCKET="/run/php/php8.3-fpm.sock"
+if [ ! -S "$PHP_FPM_SOCKET" ]; then
+    php_socket="$(ls /run/php/*.sock 2>/dev/null | head -1)"
+    [ -n "$php_socket" ] && PHP_FPM_SOCKET="$php_socket"
+fi
+
 ok "Instancia de nginx: $NGINX_DIR (servicio $NGINX_SERVICE)."
 ok "Sitios: $NGINX_SITES_AVAILABLE · Snippets: $SNIPPETS_DIR"
 
@@ -572,12 +579,33 @@ sed -i "s|include /etc/nginx/fastcgi_params;|include $FASTCGI_PARAMS;|" \
 
 NGINX_CONF="$NGINX_SITES_AVAILABLE/$DOMINIO.conf"
 
+# --- Adminer: ¿se puede y se quiere? ---------------------------------------
+# Es una puerta abierta a la base de datos: solo si el servidor tiene Adminer
+# y el PHP-FPM del host, y si el usuario no lo desactiva con --no-adminer.
+ADMINER_AVAILABLE=0
+
+if [ -f "/usr/share/adminer/index.php" ] && [ -S "$PHP_FPM_SOCKET" ]; then
+    ADMINER_AVAILABLE=1
+fi
+
 # El vhost se instala UNA vez. Si el fichero que hay ya es el NUESTRO (se
 # reconoce porque incluye nuestro snippet de FastCGI), se conserva: puede
 # estar editado a mano. Si es el del panel de hosting, que no sabe nada de
 # nuestra API y devuelve 404 en /api/, se sustituye guardando una copia.
-if [ -f "$NGINX_CONF" ] && grep -q "sonora-fastcgi.conf" "$NGINX_CONF" \
-    && [ "$INSTALL_NGINX" -eq 0 ]; then
+# Si además queremos Adminer y el vhost no lo tiene, se reinstala.
+install_vhost=0
+
+if [ ! -f "$NGINX_CONF" ]; then
+    install_vhost=1
+elif ! grep -q "sonora-fastcgi.conf" "$NGINX_CONF"; then
+    install_vhost=1
+elif [ "$INSTALL_NGINX" -eq 1 ]; then
+    install_vhost=1
+elif [ "$ADMINER_AVAILABLE" -eq 1 ] && ! grep -q "BEGIN-ADMINER" "$NGINX_CONF"; then
+    install_vhost=1
+fi
+
+if [ "$install_vhost" -eq 0 ]; then
     ok "Configuración de nginx conservada ($NGINX_CONF)."
     ok "Para reinstalarla desde el repositorio: --install-nginx"
 else
@@ -601,6 +629,8 @@ else
         -e "s|/var/www/site-music-antoniogmport-5de994/logs|$LOG_DIR|g" \
         -e "s|/srv/sonora/media|$MEDIA_DIR|g" \
         -e "s|/etc/nginx/snippets|$SNIPPETS_DIR|g" \
+        -e "s|include /etc/nginx/fastcgi_params;|include $FASTCGI_PARAMS;|" \
+        -e "s|fastcgi_pass unix:/run/php/php8.3-fpm.sock;|fastcgi_pass unix:$PHP_FPM_SOCKET;|" \
         "$NGINX_CONF"
 
     # El include de Adminer es relativo: con `-c /etc/nginx-second/nginx.conf`
@@ -635,17 +665,17 @@ else
 fi
 
 # Adminer: es una puerta abierta a la base de datos. Se puede quitar.
-# Si no están los ficheros de Adminer, el snippet de PHP del panel o el socket
-# de PHP-FPM del host, el bloque se elimina: dejarlo apuntando a algo
-# inexistente rompe `nginx -t`.
+# El bloque se elimina si se pide (--no-adminer) o si el servidor no tiene
+# Adminer o el PHP-FPM del host: dejarlo apuntando a algo inexistente rompe
+# `nginx -t` y el usuario vería un 404 en /adminer.
 if [ "$WITH_ADMINER" -eq 0 ]; then
     sed -i '/#---BEGIN-ADMINER---/,/#---END-ADMINER---/d' "$NGINX_CONF"
-    ok "Bloque de Adminer omitido."
-elif [ ! -f "/usr/share/adminer/index.php" ] \
-    || [ ! -f "$NGINX_DIR/snippets/fastcgi-php.conf" ] \
-    || [ ! -S "/run/php/php8.3-fpm.sock" ]; then
+    ok "Bloque de Adminer omitido (--no-adminer)."
+elif [ "$ADMINER_AVAILABLE" -eq 0 ]; then
     sed -i '/#---BEGIN-ADMINER---/,/#---END-ADMINER---/d' "$NGINX_CONF"
-    warn "Adminer no está instalado en el servidor: se omite su bloque."
+    warn "Adminer no está instalado en el servidor (o no hay PHP-FPM del host): se omite su bloque."
+else
+    ok "Adminer disponible en /adminer (PHP-FPM del host)."
 fi
 
 # Habilitar el sitio.
