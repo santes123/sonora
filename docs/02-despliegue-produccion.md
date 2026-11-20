@@ -37,6 +37,7 @@ Opciones útiles:
 | `--media-dir RUTA` | Medios privados (por defecto `/srv/sonora/media`) |
 | `--app-key CLAVE` | Fijar el `APP_KEY` (si no, se genera y se guarda) |
 | `--db-password CLAVE` | Fijar la contraseña de MariaDB (si no, se genera) |
+| `--fpm-port PUERTO` | Puerto del host para PHP-FPM (por defecto **9001**) |
 | `--no-adminer` | No instalar el bloque de Adminer en nginx |
 | `--skip-build` | No reconstruir imágenes (despliegue rápido) |
 | `--skip-cron` | No instalar las tareas programadas |
@@ -61,9 +62,9 @@ Internet
    ▼
 nginx del host (Ubuntu)          ← TLS, SPA estática, cabeceras de seguridad
    │ ├── /            → /var/www/site-music-antoniogmport-5de994/htdocs
-   │ ├── /api/        → fastcgi_pass 127.0.0.1:9000  (PHP-FPM del contenedor)
-   │ ├── /sanctum/    → fastcgi_pass 127.0.0.1:9000
-   │ ├── /robots.txt  → fastcgi_pass 127.0.0.1:9000  (lo genera la app)
+   │ ├── /api/        → fastcgi_pass 127.0.0.1:9001  (PHP-FPM del contenedor)
+   │ ├── /sanctum/    → fastcgi_pass 127.0.0.1:9001
+   │ ├── /robots.txt  → fastcgi_pass 127.0.0.1:9001  (lo genera la app)
    │ └── /_media/     → /srv/sonora/media  (X-Accel-Redirect, `internal`)
    │
 Docker (red interna `sonora`)
@@ -112,6 +113,24 @@ Puertos del firewall: **80 y 443** abiertos. Nada más debe estarlo.
 sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw enable
 ```
 
+### Puertos que publica el stack de Sonora
+
+| Puerto | Servicio | Visible desde Internet |
+|---|---|---|
+| 9001 | PHP-FPM (contenedor `app`) | No, solo `127.0.0.1` |
+| 3307 | MariaDB | No, solo `127.0.0.1` |
+| 6380 | Redis | No, solo `127.0.0.1` |
+
+> El puerto de PHP-FPM es **9001** y no 9000 porque en servidores con Portainer
+> o paneles de hosting el 9000 suele estar ya ocupado. `deploy.sh` comprueba
+> los puertos antes de construir nada y, si hay conflicto, dice qué
+> contenedor lo tiene. Se puede cambiar con `--fpm-port`.
+
+```bash
+# Comprobar los puertos publicados por Docker
+sudo docker ps --format '{{.Names}}\t{{.Ports}}'
+```
+
 ### DNS
 
 Antes de nada, un registro A (o AAAA) debe apuntar al servidor:
@@ -132,8 +151,12 @@ sudo chown -R "$USER":"$USER" /srv/sonora
 
 # Repositorio
 cd /srv/sonora
-git clone <URL_DEL_REPOSITORIO> app
+git clone https://github.com/santes123/sonora.git app
 cd app
+
+# Los scripts vienen con permiso de ejecución (git guarda el bit), pero por
+# si acaso:
+chmod +x deploy/*.sh
 ```
 
 Copia de la configuración de nginx y de los scripts:
@@ -192,7 +215,7 @@ Comprobar:
 
 ```bash
 docker compose --env-file backend/.env.production -f docker-compose.prod.yml ps
-curl -s http://127.0.0.1:9000/up          # a través de PHP-FPM
+curl -s http://127.0.0.1:9001/up          # a través de PHP-FPM
 curl -s http://127.0.0.1:8080/api/v1/health
 ```
 

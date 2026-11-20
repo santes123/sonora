@@ -71,18 +71,29 @@ responde):
 
 ```bash
 # 1. Guardar el token de GitHub en el servidor (no pasa por el historial)
-sudo sh -c 'umask 077; read -rs TOKEN; printf "%s" "$TOKEN" > /root/.sonora-token; echo'
+sudo bash -c 'umask 077; read -rs TOKEN; printf "%s" "$TOKEN" > /root/.sonora-token; echo'
 
 # 2. Clonar el repositorio
-sudo sh -c 'T=$(cat /root/.sonora-token); git clone "https://x-access-token:${T}@github.com/santes123/sonora.git" /srv/sonora/app'
+sudo bash -c 'T=$(cat /root/.sonora-token); git clone "https://x-access-token:${T}@github.com/santes123/sonora.git" /srv/sonora/app'
 
 # 3. Desplegar (el token no queda en .git/config)
-sudo sh -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
+sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
   /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
 ```
 
 > El certificado TLS ya existe en el servidor y se renueva solo: el script
 > **no** lanza certbot, solo comprueba que el certificado siga ahí.
+>
+> Si el script da `Permission denied`, ejecútalo con `bash` delante
+> (`sudo bash /srv/sonora/app/deploy/deploy.sh ...`) o dale permiso con
+> `sudo chmod +x /srv/sonora/app/deploy/*.sh`.
+
+**Puertos y contenedores**: el stack publica PHP-FPM en `127.0.0.1:9001`
+(opción `--fpm-port` para cambiarlo), MariaDB en `3307` y Redis en `6380`.
+`deploy.sh` comprueba que estén libres **antes** de construir las imágenes y
+avisa de qué contenedor los ocupa si no lo están. Se crean **5 contenedores**:
+`app`, `queue`, `scheduler`, `mariadb` y `redis` (el sexto, `web`, solo con el
+perfil `nginx-docker`, que no se usa en producción).
 
 Todos los comandos, las rutas reales del servidor y los cuatro métodos de
 autenticación están en

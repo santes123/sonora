@@ -51,6 +51,48 @@ newgrp docker
 > `docker compose version` debe imprimir una versión. Sin Docker Compose v2 el
 > script `deploy.sh` no puede levantar el stack.
 
+### Permisos de ejecución
+
+`git` guarda el bit de ejecución, así que un clon nuevo ya trae
+`deploy.sh` ejecutable. Si ves `Permission denied` (porque el clon es de una
+versión anterior o el repo se clonó desde Windows), hay dos formas de seguir:
+
+```bash
+# A) Dar permiso una vez
+sudo chmod +x /srv/sonora/app/deploy/*.sh
+ls -la /srv/sonora/app/deploy/deploy.sh
+
+# B) Invocar el script con bash (no necesita permiso de ejecución)
+sudo bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git
+```
+
+### Puertos que usa Sonora
+
+| Servicio | Puerto en el host | Notas |
+|---|---|---|
+| PHP-FPM | **9001** | Solo `127.0.0.1`. Lo consume el nginx del host. Ajustable con `--fpm-port` |
+| MariaDB | 3307 | Solo `127.0.0.1`. Variable `BIND_MARIADB_PORT` |
+| Redis | 6380 | Solo `127.0.0.1`. Variable `BIND_REDIS_PORT` |
+| nginx (host) | 80 y 443 | Los del servidor, no los de Docker |
+
+> **El 9000 no se usa a propósito:** es el puerto por defecto de PHP-FPM y en
+> servidores con Portainer o paneles de hosting suele estar ocupado. `deploy.sh`
+> comprueba los puertos **antes** de construir las imágenes y dice qué
+> contenedor los tiene si hay un conflicto.
+
+### Cuántos contenedores se crean
+
+**6 servicios**, de los que en producción se levantan **5**:
+
+| Contenedor | Función |
+|---|---|
+| `sonora-app-1` | PHP-FPM: la API y las páginas |
+| `sonora-queue-1` | Trabajos en segundo plano (portada WebP, metadatos) |
+| `sonora-scheduler-1` | `schedule:work`: `media:gc` diario y purgas |
+| `sonora-mariadb-1` | MariaDB 11.4 |
+| `sonora-redis-1` | Redis 7 (sesiones, caché y colas) |
+| `sonora-web-1` | nginx en Docker — **solo** con el perfil `nginx-docker`; en producción no se levanta porque el TLS lo termina el nginx del host |
+
 ---
 
 ## 2. Método 1 — HTTPS con token (recomendado)
@@ -83,7 +125,7 @@ archivo es el token.
 **Opción A — escribirlo a mano:**
 
 ```bash
-sudo sh -c 'umask 077; read -rs TOKEN; printf "%s" "$TOKEN" > /root/.sonora-token; echo'
+sudo bash -c 'umask 077; read -rs TOKEN; printf "%s" "$TOKEN" > /root/.sonora-token; echo'
 ```
 
 Pide el token y lo guarda en `/root/.sonora-token` con permisos `600`
@@ -102,13 +144,13 @@ ssh root@music.antoniogmportfolio.online 'sudo install -m 600 /tmp/fine-access-t
 ### 2.3 Clonar el repositorio
 
 ```bash
-sudo sh -c 'T=$(cat /root/.sonora-token); git clone "https://x-access-token:${T}@github.com/santes123/sonora.git" /srv/sonora/app'
+sudo bash -c 'T=$(cat /root/.sonora-token); git clone "https://x-access-token:${T}@github.com/santes123/sonora.git" /srv/sonora/app'
 ```
 
 ### 2.4 Desplegar
 
 ```bash
-sudo sh -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
+sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
   /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
 ```
 
@@ -116,7 +158,42 @@ El script clona o actualiza el código en `/srv/sonora/app`, construye las
 imágenes, levanta el stack, instala nginx, publica la SPA, instala las tareas
 programadas y verifica que todo responde.
 
-### 2.5 Comprobar que no ha quedado rastro del token
+Si el puerto de PHP-FPM que usa el servidor está ocupado, se cambia con
+`--fpm-port` (por ejemplo `--fpm-port 9002`):
+
+```bash
+sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
+  /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git --fpm-port 9002'
+```
+
+### 2.5 Si el despliegue falla a mitad (puerto ocupado)
+
+Si el script se para al levantar el stack con
+`Bind for 0.0.0.0:9000 failed: port is already allocated`, queda el stack a
+medias. Se limpia y se vuelve a lanzar:
+
+```bash
+cd /srv/sonora/app
+
+# Ver qué quedó levantado
+sudo docker compose --env-file backend/.env.production -f docker-compose.prod.yml ps -a
+
+# Limpiar los contenedores (los datos están en volúmenes: no se pierden)
+sudo docker compose --env-file backend/.env.production -f docker-compose.prod.yml down
+
+# Volver a desplegar
+sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
+  /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
+```
+
+Para ver quién tiene un puerto:
+
+```bash
+sudo ss -tlnp | grep 9000
+sudo docker ps --format '{{.Names}}\t{{.Ports}}' | grep 9000
+```
+
+### 2.6 Comprobar que no ha quedado rastro del token
 
 ```bash
 sudo git -C /srv/sonora/app remote -v
@@ -125,7 +202,7 @@ sudo git -C /srv/sonora/app remote -v
 sudo grep -E "ghp_|gho_|x-access-token" /srv/sonora/app/.git/config || echo "sin tokens en la config"
 ```
 
-### 2.6 Revocar el token
+### 2.7 Revocar el token
 
 En GitHub: *Settings → Developer settings → Personal access tokens → Revoke*.
 Y en el servidor:
@@ -143,7 +220,7 @@ Queda **un único archivo con permisos 600** para `root`.
 
 ```bash
 # 1. Archivo de credenciales (solo root)
-sudo sh -c 'umask 077; printf "https://x-access-token:TOKEN_AQUI@github.com\n" > /root/.git-credentials'
+sudo bash -c 'umask 077; printf "https://x-access-token:TOKEN_AQUI@github.com\n" > /root/.git-credentials'
 
 # 2. Git usa ese archivo para github.com (configuración de sistema)
 sudo git config --system credential.https://github.com.helper "store --file=/root/.git-credentials"
@@ -268,7 +345,7 @@ Siempre el mismo comando, según el método que uses:
 
 ```bash
 # Método 1 (token en cada ejecución)
-sudo sh -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
+sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
   /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
 
 # Método 2 (credenciales guardadas) o Método 3 (SSH)

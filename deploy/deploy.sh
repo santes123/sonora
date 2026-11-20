@@ -34,6 +34,7 @@
 #   --deploy-dir RUTA    directorio de trabajo (por defecto /srv/sonora)
 #   --app-key CLAVE      APP_KEY de Laravel (si no se indica, se genera)
 #   --db-password CLAVE  contraseña de MariaDB (si no se indica, se genera)
+#   --fpm-port PUERTO    puerto del host para PHP-FPM (por defecto 9001)
 #   --no-adminer         no instalar el bloque de Adminer en nginx
 #   --skip-build         no reconstruir las imágenes
 #   --skip-cron          no instalar las tareas programadas
@@ -54,11 +55,20 @@ LOG_DIR="${LOG_DIR:-/var/www/site-music-antoniogmport-5de994/logs}"
 MEDIA_DIR="${MEDIA_DIR:-$DEPLOY_DIR/media}"
 APP_KEY="${APP_KEY:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
+# Puerto del host donde se publica PHP-FPM. 9000 es el valor por defecto de
+# PHP-FPM, pero en servidores con Panel de control o Portainer suele estar
+# ocupado: por eso 9001 y la opción --fpm-port.
+FPM_PORT="${FPM_PORT:-9001}"
+BIND_MARIADB_PORT="${BIND_MARIADB_PORT:-3307}"
+BIND_REDIS_PORT="${BIND_REDIS_PORT:-6380}"
 SKIP_BUILD=0
 SKIP_CRON=0
 WITH_ADMINER=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Se guardan los argumentos originales: tras actualizar el código, el script
+# puede haberse cambiado y hay que relanzarlo con las mismas opciones.
+ORIGINAL_ARGS=("$@")
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -72,6 +82,7 @@ while [ $# -gt 0 ]; do
         --deploy-dir) DEPLOY_DIR="$2"; shift 2 ;;
         --app-key) APP_KEY="$2"; shift 2 ;;
         --db-password) DB_PASSWORD="$2"; shift 2 ;;
+        --fpm-port) FPM_PORT="$2"; shift 2 ;;
         --no-adminer) WITH_ADMINER=0; shift ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --skip-cron) SKIP_CRON=1; shift ;;
@@ -196,6 +207,16 @@ else
     ok "Código copiado desde $SOURCE_DIR."
 fi
 
+# Si el código recién descargado trae un deploy.sh distinto al que se está
+# ejecutando, se relanza desde la copia nueva: bash lee el script por partes y
+# seguir con un fichero reescrito en mitad de la ejecución puede ejecutar
+# líneas que no pertenecen a ninguna versión del script.
+if [ "${SONORA_REEXEC:-0}" != "1" ] && [ "$SCRIPT_DIR/deploy.sh" != "$APP_DIR/deploy/deploy.sh" ] \
+    && [ -f "$APP_DIR/deploy/deploy.sh" ]; then
+    ok "El script se ha actualizado: se relanza desde $APP_DIR/deploy/deploy.sh"
+    SONORA_REEXEC=1 exec bash "$APP_DIR/deploy/deploy.sh" "${ORIGINAL_ARGS[@]}"
+fi
+
 cd "$APP_DIR"
 
 # --- 4. Variables de entorno -------------------------------------------------
@@ -228,6 +249,17 @@ set_env SESSION_DOMAIN "$DOMINIO"
 set_env SESSION_SECURE_COOKIE true
 set_env SANCTUM_STATEFUL_DOMAINS "$DOMINIO"
 set_env MAIL_FROM_ADDRESS "hola@$DOMINIO"
+
+# Si ya hay APP_KEY guardada, se respeta: cambiarla invalidaría las sesiones,
+# los tokens CSRF y todo lo cifrado con ella.
+if [ -z "$APP_KEY" ] && [ -f "$ENV_FILE" ]; then
+    APP_KEY="$(grep -E '^APP_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+    if [ -n "$APP_KEY" ] && [ "$APP_KEY" != "CAMBIAR_ESTA_CLAVE" ]; then
+        ok "APP_KEY existente conservada."
+    else
+        APP_KEY=""
+    fi
+fi
 
 if [ -z "$APP_KEY" ]; then
     # Se genera con la imagen ya construida; si aún no existe, se deja
@@ -286,6 +318,67 @@ export MEDIA_DIR="$MEDIA_DIR"
 
 # `sudo` no hereda el entorno: se exporta en vez de prefijar el comando.
 export RUN_MIGRATIONS=true
+export BIND_FPM_PORT="$FPM_PORT"
+
+# --- Control previo de puertos ----------------------------------------------
+# Si otro proyecto del servidor tiene el puerto, `up -d` falla con un error
+# poco claro ("port is already allocated") DESPUÉS de construir las imágenes.
+# Aquí se comprueba antes y se dice quién ocupa el puerto.
+our_project="$(sed -n 's/^name:[[:space:]]*//p' "$APP_DIR/docker-compose.prod.yml" 2>/dev/null | head -1)"
+our_project="${our_project:-sonora}"
+
+our_ports() {
+    docker ps --filter "label=com.docker.compose.project=${our_project}" \
+        --format '{{.Ports}}' 2>/dev/null \
+        | grep -oE "[:.][0-9]+->" | tr -cd '0-9\n' | sort -u
+}
+
+port_owner() {
+    local port="$1"
+    local owners
+
+    owners="$(docker ps --format '{{.Names}}|{{.Ports}}' 2>/dev/null \
+        | awk -F'|' -v p="$port" '$2 ~ "[:.]" p "->" {print $1}' \
+        | grep -vE "^${our_project}-" || true)"
+
+    if [ -n "$owners" ]; then
+        echo "$owners" | tr '\n' ' '
+        return 0
+    fi
+
+    if command -v ss >/dev/null 2>&1; then
+        if ss -ltn 2>/dev/null | awk '{print $4}' | grep -oE "[:.][0-9]+$" \
+            | tr -cd '0-9\n' | sort -u | grep -qx "$port" \
+            && ! our_ports | grep -qx "$port"; then
+            echo "un proceso del host"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+check_port() {
+    local port="$1" label="$2" owner
+    owner="$(port_owner "$port")" || return 0
+    warn "El puerto $port ($label) ya lo está usando: $owner"
+    return 1
+}
+
+free_port=1
+for pair in "$FPM_PORT:PHP-FPM" "$BIND_MARIADB_PORT:MariaDB" "$BIND_REDIS_PORT:Redis"; do
+    check_port "${pair%%:*}" "${pair#*:}" || free_port=0
+done
+
+if [ "$free_port" -eq 0 ]; then
+    die "Hay puertos ocupados por otro proyecto del servidor.
+  Cambia el puerto de PHP-FPM con --fpm-port (por ejemplo --fpm-port 9002) o
+  libera el puerto ocupado. MariaDB y Redis se pueden mover con
+  BIND_MARIADB_PORT y BIND_REDIS_PORT."
+fi
+
+ok "Puertos libres: PHP-FPM $FPM_PORT, MariaDB $BIND_MARIADB_PORT, Redis $BIND_REDIS_PORT."
+
 $DOCKER compose --env-file backend/.env.production -f docker-compose.prod.yml up -d
 ok "Servicios levantados."
 
@@ -323,6 +416,13 @@ install -m 644 "$APP_DIR/deploy/nginx/snippets/sonora-fastcgi.conf" \
     /etc/nginx/snippets/sonora-fastcgi.conf
 install -m 644 "$APP_DIR/deploy/nginx/snippets/security-headers.conf" \
     /etc/nginx/snippets/security-headers.conf
+
+# El puerto de PHP-FPM se fija aquí (el del host, no el 9000 interno del
+# contenedor): si no coincide con el que publica Docker, la API devuelve 502.
+sed -i -E "s|fastcgi_pass 127\.0\.0\.1:[0-9]+;|fastcgi_pass 127.0.0.1:${FPM_PORT};|" \
+    /etc/nginx/snippets/sonora-fastcgi.conf
+grep -q "fastcgi_pass 127.0.0.1:${FPM_PORT};" /etc/nginx/snippets/sonora-fastcgi.conf \
+    || die "No se pudo fijar el puerto de PHP-FPM ($FPM_PORT) en el snippet de nginx."
 
 install -m 644 "$APP_DIR/deploy/nginx/music.antoniogmportfolio.online.conf" \
     "/etc/nginx/sites-available/$DOMINIO.conf"
@@ -464,7 +564,12 @@ $(printf '\033[1;32m')═══════════════════�
   Logs nginx:     $LOG_DIR
   Medios:         $MEDIA_DIR
   Backups:        $DEPLOY_DIR/backups
+  PHP-FPM:        127.0.0.1:$FPM_PORT
   Contraseña BD:  $DB_PASSWORD
+
+  Contenedores (6): app, queue, scheduler, mariadb, redis y web
+  (web solo con el perfil nginx-docker; en producción el TLS lo termina el
+  nginx del host, así que no se levanta).
 
   Estado de los servicios:
 $(cd "$APP_DIR" && $DOCKER compose --env-file backend/.env.production -f docker-compose.prod.yml ps --format '    {{.Service}}  {{.Status}}')
@@ -484,5 +589,8 @@ $(cd "$APP_DIR" && $DOCKER compose --env-file backend/.env.production -f docker-
     cd $APP_DIR && git pull && \\
       docker compose --env-file backend/.env.production -f docker-compose.prod.yml build && \\
       docker compose --env-file backend/.env.production -f docker-compose.prod.yml up -d
+
+  (El repositorio es privado: para actualizar, vuelve a lanzar deploy.sh con el
+   token, como está en docs/04-guia-acceso-repositorio.md.)
 
 EOF
