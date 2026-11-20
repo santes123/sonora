@@ -146,6 +146,18 @@ sudo /srv/sonora/deploy/sonora.sh logs app
 | `sonora:create-admin` | Crea la primera cuenta de administrador |
 | `sonora:update-user` | Cambia el correo, nombre, contraseña o rol de una cuenta |
 
+**Cambiar la contraseña de un usuario:**
+
+```bash
+# Con una contraseña que eliges tú (mínimo 8 caracteres)
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+  --email=usuario@correo.com --password='contrasena-larga'
+
+# O generando una nueva (la muestra por pantalla)
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+  --email=usuario@correo.com --reset-password
+```
+
 ---
 
 ## Ajustes del sitio (panel `/admin`)

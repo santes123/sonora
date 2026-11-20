@@ -339,18 +339,36 @@ código (que **no** contiene secretos: `.env`, `login.txt`, los medios y
 
 ---
 
-## 6. Actualizar el sitio más adelante
+## 6. Actualizar el sitio (cada iteración)
 
-Siempre el mismo comando, según el método que uses:
+**Un solo comando por iteración**: `deploy.sh` descarga el código nuevo de
+GitHub, reconstruye las imágenes, levanta el stack, publica la SPA, ajusta
+nginx y verifica que todo responde.
 
 ```bash
-# Método 1 (token en cada ejecución)
+# Método 1 (token en cada ejecución) - el que usas ahora
 sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
   bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
 
-# Método 2 (credenciales guardadas) o Método 3 (SSH)
-sudo bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git
+# Método 2 (credenciales guardadas) o Método 3 (SSH): sin token
+sudo /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git
 ```
+
+> **Si el `deploy.sh` del servidor es una versión antigua**, este comando
+> actualiza el código pero sigue ejecutando el script viejo (que puede dejar
+> el vhost a medias). En ese caso, trae el código antes a mano:
+>
+> ```bash
+> sudo bash -c 'T=$(cat /root/.sonora-token); cd /srv/sonora/app && \
+>   git fetch "https://x-access-token:${T}@github.com/santes123/sonora.git" \
+>     "+refs/heads/main:refs/remotes/origin/main" && \
+>   git checkout -B main refs/remotes/origin/main && \
+>   git reset --hard refs/remotes/origin/main && \
+>   git remote set-url origin https://github.com/santes123/sonora.git'
+> ```
+>
+> Con la versión actual (módulo 6.13 en adelante), el script **se relanza solo**
+> tras descargar el código: no hace falta este paso previo.
 
 Opciones útiles al actualizar:
 
@@ -382,6 +400,21 @@ sudo /srv/sonora/deploy/sonora.sh db -e "SELECT email, role FROM users;"
 sudo /srv/sonora/deploy/sonora.sh compose ps
 sudo /srv/sonora/deploy/sonora.sh logs app
 ```
+
+### Cambiar la contraseña de un usuario
+
+```bash
+# Con una contraseña que eliges tú
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+  --email=usuario@correo.com --password='contrasena-larga'
+
+# O generando una nueva (la muestra por pantalla, no se guarda en ningún sitio)
+sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+  --email=usuario@correo.com --reset-password
+```
+
+La contraseña mínima es de 8 caracteres. Si solo cambias el correo, la
+contraseña **no se toca**.
 
 Actualizar **sin** redesplegar todo (reconstruye solo lo que cambia):
 

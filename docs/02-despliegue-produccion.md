@@ -19,6 +19,59 @@ sudo /srv/sonora/app/deploy/deploy.sh \
     --repo https://github.com/santes123/sonora.git
 ```
 
+### El ciclo de cada iteración
+
+**Un solo comando por iteración.** El script descarga el código nuevo de
+GitHub, reconstruye lo que cambia, levanta el stack, publica la SPA, ajusta
+nginx y verifica que todo responde:
+
+```bash
+# Repositorio privado con token (el método que estás usando)
+sudo bash -c 'REPO_TOKEN=$(cat /root/.sonora-token); export REPO_TOKEN; \
+  bash /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git'
+```
+
+Si el repositorio privado ya tiene credenciales guardadas en el servidor
+(método 2) o usa la deploy key (método 3), el token no hace falta:
+
+```bash
+sudo /srv/sonora/app/deploy/deploy.sh --repo https://github.com/santes123/sonora.git
+```
+
+Lo que hace, en orden:
+
+| Paso | Qué hace |
+|---|---|
+| 1 | Descarga el código nuevo (`git fetch` + `reset --hard` a `main`) |
+| 2 | Reconstruye las imágenes del backend y del frontend |
+| 3 | Levanta el stack y aplica las migraciones |
+| 4 | Publica la SPA en `htdocs/web/` |
+| 5 | Ajusta el vhost de nginx y lo recarga |
+| 6 | Instala las tareas programadas (backup, monitor, mantenimiento) |
+| 7 | Verifica SPA, API, `robots.txt` y cookie CSRF |
+
+> Si el `deploy.sh` del servidor es antiguo y no se actualiza solo, trae el
+> código a mano antes (ver [04-guia-acceso-repositorio.md](04-guia-acceso-repositorio.md),
+> sección 6). Con la versión actual, el script se relanza solo tras actualizar
+> el código.
+
+### Administrar el sitio
+
+El despliegue instala `/srv/sonora/deploy/sonora.sh`, que resuelve todas las
+rutas de forma absoluta (funciona desde cualquier directorio):
+
+```bash
+# Artisan (crear cuentas, cambiar correos o contraseñas...)
+sudo /srv/sonora/deploy/sonora.sh artisan <comando>
+
+# Base de datos
+sudo /srv/sonora/deploy/sonora.sh db -e "SELECT email, role FROM users;"
+
+# Compose y logs
+sudo /srv/sonora/deploy/sonora.sh compose ps
+sudo /srv/sonora/deploy/sonora.sh logs app
+```
+
 > **Repositorio privado:** hay cuatro formas de autenticarse (HTTPS con token,
 > credenciales guardadas en el servidor, SSH con deploy key o repositorio
 > público). Están explicadas paso a paso, con los comandos exactos y las rutas
@@ -614,6 +667,17 @@ administración, sin tocar el servidor.
    | `--password` | Nueva contraseña (mínimo 8 caracteres) |
    | `--reset-password` | Genera una contraseña nueva y la muestra por pantalla |
    | `--role` | `admin` o `user` |
+
+   **Cambiar solo la contraseña** (mínimo 8 caracteres):
+
+   ```bash
+   sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+       --email=usuario@correo.com --password='contrasena-larga'
+
+   # O generar una nueva (la muestra por pantalla, no se guarda en ningún sitio)
+   sudo /srv/sonora/deploy/sonora.sh artisan sonora:update-user \
+       --email=usuario@correo.com --reset-password
+   ```
 
    Si solo cambias el correo, **la contraseña no se toca**. Si el correo nuevo
    ya existe en otra cuenta, el comando se niega y no cambia nada.
